@@ -600,7 +600,7 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 		info fs.FileInfo
 	}
 
-	seen, updated := 0, 0
+	seen, updated, skippedSystemDirs := 0, 0, 0
 	skipped := make([]string, 0)
 
 	for _, lib := range libs {
@@ -612,12 +612,31 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 
 		files := make([]scannedFile, 0)
 		walkFailed := false
+		skippedDirs := 0
+		skipDir := func(name string) bool {
+			lower := strings.ToLower(name)
+			if strings.HasPrefix(name, ".") {
+				return true
+			}
+			switch lower {
+			case "@recycle", "@recycle.bin", "@transcode", "@recently-snapshot", "@eadir":
+				return true
+			}
+			return false
+		}
 		err = filepath.WalkDir(lib.Path, func(path string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				walkFailed = true
 				return nil
 			}
-			if d.IsDir() || !videoExt[strings.ToLower(filepath.Ext(path))] {
+			if d.IsDir() {
+				if path != lib.Path && skipDir(d.Name()) {
+					skippedDirs++
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !videoExt[strings.ToLower(filepath.Ext(path))] {
 				return nil
 			}
 			info, infoErr := d.Info()
@@ -631,6 +650,7 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			walkFailed = true
 		}
+		skippedSystemDirs += skippedDirs
 
 		foundPaths := make(map[string]struct{}, len(files))
 		s.mu.Lock()
@@ -698,6 +718,7 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 		"ok": true,
 		"files_seen": seen,
 		"updated": updated,
+		"skipped_system_dirs": skippedSystemDirs,
 		"skipped_libraries": skipped,
 	})
 }
