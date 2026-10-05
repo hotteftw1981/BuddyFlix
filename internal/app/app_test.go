@@ -207,3 +207,42 @@ func TestLibrariesGetReturnsEmptyArray(t *testing.T) {
 		t.Fatalf("expected empty JSON array, got %q", got)
 	}
 }
+
+
+func TestMediaGetHidesMissingByDefault(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{
+		{ID: 1, Title: "Present", Path: "/present.mkv"},
+		{ID: 2, Title: "Missing", Path: "/missing.mkv", Missing: true},
+	}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/media", nil)
+	rec := httptest.NewRecorder()
+	s.media(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("media GET failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var visible []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &visible); err != nil {
+		t.Fatal(err)
+	}
+	if len(visible) != 1 || visible[0].ID != 1 {
+		t.Fatalf("expected only present media, got %+v", visible)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media?include_missing=1", nil)
+	rec = httptest.NewRecorder()
+	s.media(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("media GET include_missing failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var all []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &all); err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("expected present and missing media, got %+v", all)
+	}
+}
