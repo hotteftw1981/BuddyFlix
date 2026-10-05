@@ -71,6 +71,21 @@ Das Ziel ist ein eigener, ressourcenschonender Media Server mit bewusstem Fokus 
 - moderne UX
 - Multiarch-Builds
 
+### 🔥 Hohe Priorität
+
+- **Native Fire TV Stick App**
+  - TV-optimierte Oberfläche
+  - Steuerung vollständig per Fire-TV-Fernbedienung
+  - Server automatisch im Heimnetz finden
+  - Benutzer-/Profilwahl
+  - Startseite, Filme, Serien und „Weiterschauen“
+  - Direct Play so oft wie möglich
+  - Untertitel- und Tonspurwahl
+  - Wiedergabefortschritt mit dem BuddyFlix-Server synchronisieren
+  - später möglichst bequem als APK sideloadbar und perspektivisch Amazon Appstore
+
+> **„Was bringt der schönste Media Server, wenn wir ihn nicht gemütlich vom Sofa aus benutzen können?“** 😄
+
 Perspektivisch geplant:
 
 - Serien
@@ -86,8 +101,9 @@ Perspektivisch geplant:
 - Direct Stream / Remux
 - Audio-Transcoding
 - Video-Transcoding als letzte Option
-- PWA
+- **Fire TV Stick App**
 - Android-/Android-TV-Client
+- PWA
 - erweiterte Systemüberwachung
 - NAS Protection / Lastbegrenzung
 
