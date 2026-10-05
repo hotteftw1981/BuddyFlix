@@ -583,32 +583,57 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 	s.scanRunning = true
 	s.scanMu.Unlock()
 	defer func() { s.scanMu.Lock(); s.scanRunning = false; s.scanMu.Unlock() }()
+
 	s.mu.RLock()
 	libs := append([]Library(nil), s.st.Libraries...)
 	s.mu.RUnlock()
+
+	type scannedFile struct {
+		path string
+		info fs.FileInfo
+	}
+
 	seen, updated := 0, 0
+	skipped := make([]string, 0)
+
 	for _, lib := range libs {
-		s.mu.Lock()
-		for i := range s.st.Media {
-			if s.st.Media[i].LibraryID == lib.ID {
-				s.st.Media[i].Missing = true
-			}
+		root, err := os.Stat(lib.Path)
+		if err != nil || !root.IsDir() {
+			skipped = append(skipped, lib.Name)
+			continue
 		}
-		s.mu.Unlock()
-		_ = filepath.WalkDir(lib.Path, func(path string, d fs.DirEntry, e error) error {
-			if e != nil || d.IsDir() || !videoExt[strings.ToLower(filepath.Ext(path))] {
+
+		files := make([]scannedFile, 0)
+		walkFailed := false
+		err = filepath.WalkDir(lib.Path, func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				walkFailed = true
 				return nil
 			}
+			if d.IsDir() || !videoExt[strings.ToLower(filepath.Ext(path))] {
+				return nil
+			}
+			info, infoErr := d.Info()
+			if infoErr != nil {
+				walkFailed = true
+				return nil
+			}
+			files = append(files, scannedFile{path: path, info: info})
+			return nil
+		})
+		if err != nil {
+			walkFailed = true
+		}
+
+		foundPaths := make(map[string]struct{}, len(files))
+		s.mu.Lock()
+		for _, file := range files {
 			seen++
-			info, e := d.Info()
-			if e != nil {
-				return nil
-			}
-			title, year := titleFromPath(path)
-			s.mu.Lock()
+			foundPaths[file.path] = struct{}{}
+			title, year := titleFromPath(file.path)
 			found := -1
 			for i := range s.st.Media {
-				if s.st.Media[i].Path == path {
+				if s.st.Media[i].Path == file.path {
 					found = i
 					break
 				}
@@ -622,24 +647,38 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 				if s.st.Media[found].Year == 0 {
 					s.st.Media[found].Year = year
 				}
-				s.st.Media[found].MTime = info.ModTime().Unix()
-				s.st.Media[found].Size = info.Size()
+				s.st.Media[found].MTime = file.info.ModTime().Unix()
+				s.st.Media[found].Size = file.info.Size()
 			} else {
-				s.st.Media = append(s.st.Media, Media{ID: s.st.NextMediaID, LibraryID: lib.ID, Path: path, Title: title, Year: year, Added: time.Now().Format(time.RFC3339), MTime: info.ModTime().Unix(), Size: info.Size()})
+				s.st.Media = append(s.st.Media, Media{
+					ID: s.st.NextMediaID, LibraryID: lib.ID, Path: file.path,
+					Title: title, Year: year, Added: time.Now().Format(time.RFC3339),
+					MTime: file.info.ModTime().Unix(), Size: file.info.Size(),
+				})
 				s.st.NextMediaID++
 			}
 			updated++
-			s.mu.Unlock()
-			return nil
-		})
-		s.mu.Lock()
-		for i := range s.st.Libraries {
-			if s.st.Libraries[i].ID == lib.ID {
-				s.st.Libraries[i].Updated = time.Now().Format(time.RFC3339)
+		}
+
+		if !walkFailed {
+			for i := range s.st.Media {
+				if s.st.Media[i].LibraryID != lib.ID {
+					continue
+				}
+				_, exists := foundPaths[s.st.Media[i].Path]
+				s.st.Media[i].Missing = !exists
 			}
+			for i := range s.st.Libraries {
+				if s.st.Libraries[i].ID == lib.ID {
+					s.st.Libraries[i].Updated = time.Now().Format(time.RFC3339)
+				}
+			}
+		} else {
+			skipped = append(skipped, lib.Name)
 		}
 		s.mu.Unlock()
 	}
+
 	s.mu.Lock()
 	e := s.saveLocked()
 	s.mu.Unlock()
@@ -647,7 +686,13 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, e.Error())
 		return
 	}
-	jsonOut(w, map[string]any{"ok": true, "files_seen": seen, "updated": updated})
+
+	jsonOut(w, map[string]any{
+		"ok": true,
+		"files_seen": seen,
+		"updated": updated,
+		"skipped_libraries": skipped,
+	})
 }
 func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
