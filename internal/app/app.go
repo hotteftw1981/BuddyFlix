@@ -765,8 +765,51 @@ func (s *Server) mediaCleanup(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "removed": removed})
 }
 
+type TMDbSearchResult struct {
+	ID int64 `json:"id"`
+	Title string `json:"title"`
+	Overview string `json:"overview"`
+	Poster string `json:"poster"`
+	Backdrop string `json:"backdrop"`
+	ReleaseDate string `json:"release_date"`
+	Year int `json:"year"`
+}
+
 func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
-	jsonErr(w, 501, "metadata search not implemented yet")
+	if r.Method != "GET" { jsonErr(w, 405, "method not allowed"); return }
+	key := s.tmdbKey()
+	if key == "" { jsonErr(w, 400, "TMDb API key not configured"); return }
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
+	if q == "" { jsonErr(w, 400, "query required"); return }
+	v := url.Values{"api_key": {key}, "query": {q}, "language": {"de-DE"}}
+	if year > 0 { v.Set("year", strconv.Itoa(year)) }
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Get("https://api.themoviedb.org/3/search/movie?" + v.Encode())
+	if err != nil { jsonErr(w, 502, err.Error()); return }
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 { jsonErr(w, 502, "TMDb request failed"); return }
+	var raw struct {
+		Results []struct {
+			ID int64 `json:"id"`
+			Title string `json:"title"`
+			Overview string `json:"overview"`
+			PosterPath string `json:"poster_path"`
+			BackdropPath string `json:"backdrop_path"`
+			ReleaseDate string `json:"release_date"`
+		} `json:"results"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&raw) != nil { jsonErr(w, 502, "invalid TMDb response"); return }
+	out := make([]TMDbSearchResult, 0)
+	for i, z := range raw.Results {
+		if i >= 12 { break }
+		y := 0
+		if len(z.ReleaseDate) >= 4 { y, _ = strconv.Atoi(z.ReleaseDate[:4]) }
+		p, b := "", ""
+		if z.PosterPath != "" { p = "https://image.tmdb.org/t/p/w342" + z.PosterPath }
+		if z.BackdropPath != "" { b = "https://image.tmdb.org/t/p/w780" + z.BackdropPath }
+		out = append(out, TMDbSearchResult{ID:z.ID, Title:z.Title, Overview:z.Overview, Poster:p, Backdrop:b, ReleaseDate:z.ReleaseDate, Year:y})
+	}
+	jsonOut(w, out)
 }
 
 func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
