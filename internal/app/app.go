@@ -365,7 +365,10 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.Lock()
 	sc := s.scanRunning
 	s.scanMu.Unlock()
-	jsonOut(w, map[string]any{"version": Version, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "storage": "embedded-json-v1"})
+	s.mu.RLock()
+	serverName := s.st.Settings.ServerName
+	s.mu.RUnlock()
+	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "storage": "embedded-json-v1"})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -1024,6 +1027,10 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(b)
 			return
 		}
+	}
+	if p == "index.html" || strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
 	}
 	if p != "index.html" {
 		for _, root := range roots {
