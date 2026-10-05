@@ -360,7 +360,14 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	s.mu.RLock()
-	mc, lc := len(s.st.Media), len(s.st.Libraries)
+	mc, missingCount, lc := 0, 0, len(s.st.Libraries)
+	for _, item := range s.st.Media {
+		if item.Missing {
+			missingCount++
+		} else {
+			mc++
+		}
+	}
 	s.mu.RUnlock()
 	s.scanMu.Lock()
 	sc := s.scanRunning
@@ -368,7 +375,7 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	serverName := s.st.Settings.ServerName
 	s.mu.RUnlock()
-	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "storage": "embedded-json-v1"})
+	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "storage": "embedded-json-v1"})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -749,10 +756,14 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	includeMissing := r.URL.Query().Get("include_missing") == "1"
 	s.mu.RLock()
 	out := make([]Media, 0)
 	for _, m := range s.st.Media {
 		if id > 0 && m.ID != id {
+			continue
+		}
+		if !includeMissing && m.Missing {
 			continue
 		}
 		if q != "" && !strings.Contains(strings.ToLower(m.Title), q) {
@@ -770,9 +781,6 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
-	}
-	if len(out) > 500 {
-		out = out[:500]
 	}
 	jsonOut(w, out)
 }
