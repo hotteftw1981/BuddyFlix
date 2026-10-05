@@ -15,12 +15,14 @@ async function renderAdmin(){
   if(content) content.innerHTML='<div class="muted">Verwaltung wird geladen…</div>';
   state.system=await api('/api/system');
   state.libs=await api('/api/libraries');
+  state.media=await api('/api/media?include_missing=1');
   state.settings=await api('/api/settings');
   let s=state.system, cfg=state.settings;
   $('#content').innerHTML=`
   <div class="rowhead"><div><h2>Verwaltung</h2><div class="muted">Server, Bibliotheken und Zugriff verwalten</div></div><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div>
   <div class="stats">
-    <div class="stat"><b>${s.media}</b><span>Medien</span></div>
+    <div class="stat"><b>${s.media}</b><span>Vorhandene Medien</span></div>
+    <div class="stat"><b>${s.missing_media||0}</b><span>Fehlende Einträge</span></div>
     <div class="stat"><b>${s.libraries}</b><span>Bibliotheken</span></div>
     <div class="stat"><b>${s.cpus}</b><span>CPU Threads</span></div>
     <div class="stat"><b>${s.memory_mb} MB</b><span>BuddyFlix RAM</span></div>
@@ -105,8 +107,8 @@ function adminMediaRows(items){if(!items.length)return '<div class="empty">Keine
 function renderAdminMedia(mode='all'){let items=state.media;if(mode==='metadata')items=items.filter(m=>!m.poster||!m.overview);if(mode==='missing')items=items.filter(m=>m.missing);$('#medialist').innerHTML=adminMediaRows(items)}
 async function mediaAction(id,action){try{await api('/api/media/action',{method:'POST',body:JSON.stringify({media_id:id,action})});await refresh();renderAdminMedia();toast('Medienstatus aktualisiert')}catch(x){toast(x.message)}}
 async function cleanupMissing(){if(!confirm('Alle Einträge entfernen, deren Mediendatei beim letzten Scan nicht mehr gefunden wurde? Die Dateien selbst werden nicht gelöscht.'))return;try{let r=await api('/api/media/cleanup',{method:'POST'});toast(r.removed+' verwaiste Einträge entfernt');await refresh();renderAdmin()}catch(x){toast(x.message)}}
-async function editMediaById(id){let a=await api('/api/media?id='+id);if(a[0])editMedia(a[0])}
-async function identifyMediaById(id){let a=await api('/api/media?id='+id);if(a[0])identifyMedia(a[0])}
+async function editMediaById(id){let a=await api('/api/media?id='+id+'&include_missing=1');if(a[0])editMedia(a[0])}
+async function identifyMediaById(id){let a=await api('/api/media?id='+id+'&include_missing=1');if(a[0])identifyMedia(a[0])}
 async function identifyMedia(m){
   let el=document.createElement('div');el.className='modal';
   el.innerHTML=`<div class="modalbox"><div class="panel"><div class="panel-title"><div><h3>Medium identifizieren</h3><p class="muted">TMDb durchsuchen und den richtigen Treffer auswählen.</p></div><button class="close">×</button></div><form id="identifyform" class="identify-form"><label class="field grow">Titel<input name="q" value="${esc(m.title)}"></label><label class="field">Jahr<input name="year" type="number" value="${m.year||''}"></label><button class="btn primary">Suchen</button></form><div id="identifyresults" class="tmdb-results"><div class="empty">Noch keine Suche gestartet.</div></div></div></div>`;
