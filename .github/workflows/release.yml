@@ -1,0 +1,155 @@
+name: BuddyFlix Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^const Version = "\\([^"]*\\)"/\\1/p' internal/app/app.go)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not determine BuddyFlix version."
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "main may only release stable semantic versions. Found: $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether version changed
+        id: changed
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT="${{ steps.version.outputs.version }}"
+          PREVIOUS=""
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            PREVIOUS="$(git show HEAD^:internal/app/app.go 2>/dev/null | sed -n 's/^const Version = "\\([^"]*\\)"/\\1/p' || true)"
+          fi
+          if [ "$CURRENT" = "$PREVIOUS" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged ($CURRENT) - no release."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check existing release
+        id: existing
+        if: github.event_name == 'workflow_dispatch' || steps.changed.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Test backend
+        if: steps.existing.outputs.exists == 'false'
+        run: go test ./...
+
+      - name: Check frontend JavaScript
+        if: steps.existing.outputs.exists == 'false'
+        run: node --check web/app.js
+
+      - name: Build ARMHF
+        if: steps.existing.outputs.exists == 'false'
+        run: |
+          mkdir -p dist/release
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -o dist/release/buddyflix ./cmd/buddyflix
+          file dist/release/buddyflix
+
+      - name: Install QDK 2.3.11
+        if: steps.existing.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.11 https://github.com/qnap-dev/QDK.git /tmp/QDK
+          cd /tmp/QDK
+          sudo bash ./InstallToUbuntu.sh install
+          echo "/usr/share/QDK/bin" >> "$GITHUB_PATH"
+
+      - name: Prepare QPKG tree
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/buddyflix-qpkg"
+          mkdir -p "$ROOT/shared"
+          sed "s/__VERSION__/$VERSION/g" packaging/qnap/qpkg.cfg.in > "$ROOT/qpkg.cfg"
+          cp packaging/qnap/package_routines "$ROOT/package_routines"
+          cp packaging/qnap/BuddyFlix.sh "$ROOT/shared/BuddyFlix.sh"
+          chmod +x "$ROOT/shared/BuddyFlix.sh"
+          cp dist/release/buddyflix "$ROOT/shared/buddyflix"
+          chmod +x "$ROOT/shared/buddyflix"
+          cp -R web "$ROOT/shared/web"
+          printf 'BuddyFlix %s for QNAP ARMHF\nWeb UI: http://NAS-IP:8096\n' "$VERSION" > "$ROOT/shared/README-QNAP.txt"
+
+      - name: Build QPKG
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/buddyflix-qpkg"
+          cd "$ROOT"
+          /usr/share/QDK/bin/qbuild
+          FOUND="$(find build -maxdepth 1 -type f -name '*.qpkg' | head -n 1)"
+          test -n "$FOUND"
+          cp "$FOUND" "$GITHUB_WORKSPACE/dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg"
+          cd "$GITHUB_WORKSPACE"
+          sha256sum "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg" > "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg.sha256"
+
+      - name: Create GitHub release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg" \
+            "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg.sha256" \
+            --target "$GITHUB_SHA" \
+            --title "BuddyFlix $VERSION" \
+            --generate-notes
