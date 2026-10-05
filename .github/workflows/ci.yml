@@ -20,6 +20,19 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
+          cache: false
+
+      - name: Define build versions
+        id: version
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/develop" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "app_version=0.1.1-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "qpkg_version=0.1.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          else
+            echo "app_version=0.1.1-dev" >> "$GITHUB_OUTPUT"
+            echo "qpkg_version=0.1.1" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Test
         run: go test ./...
@@ -28,17 +41,53 @@ jobs:
         run: node --check web/app.js
 
       - name: Build linux amd64
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o buddyflix-amd64 ./cmd/buddyflix
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X buddyflix/internal/app.Version=${{ steps.version.outputs.app_version }}" -o buddyflix-amd64 ./cmd/buddyflix
 
       - name: Build linux ARMHF
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -o buddyflix-armhf ./cmd/buddyflix
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w -X buddyflix/internal/app.Version=${{ steps.version.outputs.app_version }}" -o buddyflix-armhf ./cmd/buddyflix
 
-      - name: Upload ARMHF test payload
+      - name: Install QDK 2.3.11
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v2.3.11 https://github.com/qnap-dev/QDK.git /tmp/QDK
+          cd /tmp/QDK
+          sudo bash ./InstallToUbuntu.sh install
+
+      - name: Build QNAP ARMHF dev QPKG
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        env:
+          APP_VERSION: ${{ steps.version.outputs.app_version }}
+          QPKG_VERSION: ${{ steps.version.outputs.qpkg_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$RUNNER_TEMP/buddyflix-qpkg"
+          mkdir -p "$ROOT/shared"
+          sed "s/__VERSION__/$QPKG_VERSION/g" packaging/qnap/qpkg.cfg.in > "$ROOT/qpkg.cfg"
+          cp packaging/qnap/package_routines "$ROOT/package_routines"
+          cp packaging/qnap/BuddyFlix.sh "$ROOT/shared/BuddyFlix.sh"
+          chmod +x "$ROOT/shared/BuddyFlix.sh"
+          cp buddyflix-armhf "$ROOT/shared/buddyflix"
+          chmod +x "$ROOT/shared/buddyflix"
+          cp -R web "$ROOT/shared/web"
+          printf 'BuddyFlix %s development build\nQPKG version: %s\nWeb UI: http://NAS-IP:8096\n' "$APP_VERSION" "$QPKG_VERSION" > "$ROOT/shared/README-QNAP.txt"
+          cd "$ROOT"
+          /usr/share/QDK/bin/qbuild
+          FOUND="$(find build -maxdepth 1 -type f -name '*.qpkg' | head -n 1)"
+          test -n "$FOUND"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          OUT="$GITHUB_WORKSPACE/dist/BuddyFlix_${APP_VERSION}_TS431P2_ARMHF.qpkg"
+          cp "$FOUND" "$OUT"
+          sha256sum "$OUT" > "$OUT.sha256"
+
+      - name: Upload QNAP dev QPKG
         if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: buddyflix-develop-armhf
+          name: BuddyFlix-${{ steps.version.outputs.app_version }}-QNAP-ARMHF
           path: |
-            buddyflix-armhf
-            web/
+            dist/*.qpkg
+            dist/*.sha256
           retention-days: 14
