@@ -64,6 +64,8 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - eindeutige Dev-Buildnummern für QNAP-Testpakete
 - GitHub CI mit Tests, JavaScript-Syntaxcheck sowie AMD64- und ARMHF-Build
 - automatische Erzeugung eines installierbaren QNAP-ARMHF-Dev-QPKG als GitHub-Actions-Artifact
+- neues BuddyFlix-Logo in Weboberfläche und Anmeldeseiten
+- eigenes BuddyFlix-App-Icon für QNAP-QPKG
 
 **Wichtig:** Diese Liste beschreibt den aktuellen Entwicklungsstand des Codes – nicht automatisch den Stand eines veröffentlichten QPKG.
 
@@ -259,6 +261,7 @@ Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
 - NAS-Systemordner beim Scan ausgeschlossen
 - dynamische Dev-Buildnummern
 - installierbare QNAP-ARMHF-Dev-QPKGs über GitHub Actions
+- neues BuddyFlix-Branding mit Web-Logo und QNAP-App-Icon
 - TMDb-Konfiguration
 - Medieneditor
 - Medienstatus und Bereinigung
