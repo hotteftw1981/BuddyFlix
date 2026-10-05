@@ -1,0 +1,3 @@
+#!/bin/sh
+# BuddyFlix currently does not need custom QDK lifecycle hooks.
+# QDK's generic installer handles install, upgrade and removal.
