@@ -136,6 +136,7 @@ jobs:
           test -n "$FOUND"
           cp "$FOUND" "$GITHUB_WORKSPACE/dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg"
           cd "$GITHUB_WORKSPACE"
+          python3 packaging/qnap/fix_qpkg_tail.py "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg"
           sha256sum "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg" > "dist/release/BuddyFlix_${VERSION}_QNAP_ARMHF.qpkg.sha256"
 
       - name: Create GitHub release
