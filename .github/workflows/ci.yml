@@ -29,3 +29,13 @@ jobs:
 
       - name: Build linux ARMHF
         run: CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-s -w" -o buddyflix-armhf ./cmd/buddyflix
+
+      - name: Upload ARMHF test payload
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: buddyflix-develop-armhf
+          path: |
+            buddyflix-armhf
+            web/
+          retention-days: 14
