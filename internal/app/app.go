@@ -65,9 +65,11 @@ type Progress struct {
 	Updated  string  `json:"updated"`
 }
 type Settings struct {
-	ServerName    string `json:"server_name"`
-	AdminUser     string `json:"admin_user"`
-	AdminPassHash string `json:"admin_pass_hash"`
+	SetupDone      bool   `json:"setup_done"`
+	ServerName     string `json:"server_name"`
+	AdminUser      string `json:"admin_user"`
+	AdminPassHash  string `json:"admin_pass_hash"`
+	TMDBAPIKey     string `json:"tmdb_api_key,omitempty"`
 }
 
 type Store struct {
@@ -111,6 +113,7 @@ func (s *Server) load() error {
 	s.st.Settings.AdminUser = s.cfg.AdminUser
 	h := sha256.Sum256([]byte(s.cfg.AdminPassword))
 	s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
+	s.st.Settings.TMDBAPIKey = s.cfg.TMDBAPIKey
 	if s.st.ServerID == "" {
 		raw := make([]byte, 12)
 		_, _ = rand.Read(raw)
@@ -146,6 +149,10 @@ func (s *Server) load() error {
 		s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
 		if err := s.saveLocked(); err != nil { return err }
 	}
+	if s.st.Settings.TMDBAPIKey == "" && s.cfg.TMDBAPIKey != "" {
+		s.st.Settings.TMDBAPIKey = s.cfg.TMDBAPIKey
+		if err := s.saveLocked(); err != nil { return err }
+	}
 	if s.st.NextLibraryID < 1 {
 		s.st.NextLibraryID = 1
 	}
@@ -166,6 +173,8 @@ func (s *Server) saveLocked() error {
 	return os.Rename(tmp, s.dbPath())
 }
 func (s *Server) routes() {
+	s.mux.HandleFunc("/api/setup/status", s.setupStatus)
+	s.mux.HandleFunc("/api/setup", s.setup)
 	s.mux.HandleFunc("/api/info", s.info)
 	s.mux.HandleFunc("/api/v1/info", s.info)
 	s.mux.HandleFunc("/api/login", s.login)
@@ -259,6 +268,67 @@ func (s *Server) auth(n http.HandlerFunc) http.HandlerFunc {
 		n(w, r)
 	}
 }
+func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+	s.mu.RLock()
+	done := s.st.Settings.SetupDone
+	name := s.st.Settings.ServerName
+	s.mu.RUnlock()
+	jsonOut(w, map[string]any{"setup_done": done, "server_name": name, "version": Version})
+}
+
+func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+	s.mu.RLock()
+	done := s.st.Settings.SetupDone
+	s.mu.RUnlock()
+	if done {
+		jsonErr(w, 409, "setup already completed")
+		return
+	}
+	var x struct {
+		ServerName string `json:"server_name"`
+		AdminUser  string `json:"admin_user"`
+		Password   string `json:"password"`
+		TMDBAPIKey string `json:"tmdb_api_key"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
+		jsonErr(w, 400, "invalid json")
+		return
+	}
+	x.ServerName = strings.TrimSpace(x.ServerName)
+	x.AdminUser = strings.TrimSpace(x.AdminUser)
+	x.TMDBAPIKey = strings.TrimSpace(x.TMDBAPIKey)
+	if x.ServerName == "" || x.AdminUser == "" {
+		jsonErr(w, 400, "server name and admin user required")
+		return
+	}
+	if len(x.Password) < 8 {
+		jsonErr(w, 400, "password must have at least 8 characters")
+		return
+	}
+	h := sha256.Sum256([]byte(x.Password))
+	s.mu.Lock()
+	s.st.Settings.SetupDone = true
+	s.st.Settings.ServerName = x.ServerName
+	s.st.Settings.AdminUser = x.AdminUser
+	s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
+	s.st.Settings.TMDBAPIKey = x.TMDBAPIKey
+	e := s.saveLocked()
+	s.mu.Unlock()
+	if e != nil {
+		jsonErr(w, 500, e.Error())
+		return
+	}
+	jsonOut(w, map[string]bool{"ok": true})
+}
+
 func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		jsonErr(w, 405, "method not allowed")
@@ -289,7 +359,7 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.Lock()
 	sc := s.scanRunning
 	s.scanMu.Unlock()
-	jsonOut(w, map[string]any{"version": Version, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "libraries": lc, "scanning": sc, "tmdb": s.cfg.TMDBAPIKey != "", "storage": "embedded-json-v1"})
+	jsonOut(w, map[string]any{"version": Version, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "storage": "embedded-json-v1"})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -301,7 +371,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 			"server_id": s.st.ServerID,
 			"data_dir": s.cfg.DataDir,
 			"listen": s.cfg.ListenAddr,
-			"tmdb_configured": s.cfg.TMDBAPIKey != "",
+			"tmdb_configured": s.st.Settings.TMDBAPIKey != "",
 		}
 		s.mu.RUnlock()
 		jsonOut(w, out)
@@ -309,6 +379,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		var x struct {
 			ServerName string `json:"server_name"`
 			AdminUser  string `json:"admin_user"`
+			TMDBAPIKey *string `json:"tmdb_api_key"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
 			jsonErr(w, 400, "invalid json")
@@ -323,6 +394,9 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.st.Settings.ServerName = x.ServerName
 		s.st.Settings.AdminUser = x.AdminUser
+		if x.TMDBAPIKey != nil {
+			s.st.Settings.TMDBAPIKey = strings.TrimSpace(*x.TMDBAPIKey)
+		}
 		e := s.saveLocked()
 		s.mu.Unlock()
 		if e != nil {
@@ -555,12 +629,60 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "files_seen": seen, "updated": updated})
 }
 func (s *Server) media(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+	if r.Method == "PUT" {
+		if id < 1 {
+			jsonErr(w, 400, "id required")
+			return
+		}
+		var x struct {
+			Title    string `json:"title"`
+			Year     int    `json:"year"`
+			Overview string `json:"overview"`
+			Poster   string `json:"poster"`
+			Backdrop string `json:"backdrop"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
+			jsonErr(w, 400, "invalid json")
+			return
+		}
+		x.Title = strings.TrimSpace(x.Title)
+		if x.Title == "" {
+			jsonErr(w, 400, "title required")
+			return
+		}
+		s.mu.Lock()
+		found := false
+		for i := range s.st.Media {
+			if s.st.Media[i].ID == id {
+				s.st.Media[i].Title = x.Title
+				s.st.Media[i].Year = x.Year
+				s.st.Media[i].Overview = strings.TrimSpace(x.Overview)
+				s.st.Media[i].Poster = strings.TrimSpace(x.Poster)
+				s.st.Media[i].Backdrop = strings.TrimSpace(x.Backdrop)
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.mu.Unlock()
+			jsonErr(w, 404, "media not found")
+			return
+		}
+		e := s.saveLocked()
+		s.mu.Unlock()
+		if e != nil {
+			jsonErr(w, 500, e.Error())
+			return
+		}
+		jsonOut(w, map[string]bool{"ok": true})
+		return
+	}
 	if r.Method != "GET" {
 		jsonErr(w, 405, "method not allowed")
 		return
 	}
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-	id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
 	s.mu.RLock()
 	out := make([]Media, 0)
 	for _, m := range s.st.Media {
@@ -646,13 +768,23 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Ranges", "bytes")
 	http.ServeContent(w, r, filepath.Base(p), st.ModTime(), f)
 }
+func (s *Server) tmdbKey() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.st.Settings.TMDBAPIKey != "" {
+		return s.st.Settings.TMDBAPIKey
+	}
+	return s.cfg.TMDBAPIKey
+}
+
 func (s *Server) metadata(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		jsonErr(w, 405, "method not allowed")
 		return
 	}
-	if s.cfg.TMDBAPIKey == "" {
-		jsonErr(w, 400, "TMDB_API_KEY not configured")
+	key := s.tmdbKey()
+	if key == "" {
+		jsonErr(w, 400, "TMDb API key not configured")
 		return
 	}
 	id, _ := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/api/metadata/"), 10, 64)
@@ -671,7 +803,7 @@ func (s *Server) metadata(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "not found")
 		return
 	}
-	v := url.Values{"api_key": {s.cfg.TMDBAPIKey}, "query": {cur.Title}, "language": {"de-DE"}}
+	v := url.Values{"api_key": {key}, "query": {cur.Title}, "language": {"de-DE"}}
 	if cur.Year > 0 {
 		v.Set("year", strconv.Itoa(cur.Year))
 	}
