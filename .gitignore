@@ -1,0 +1,32 @@
+# Binaries
+buddyflix
+buddyflix-*
+*.exe
+
+# Build output
+build/
+dist/
+release/
+*.qpkg
+*.zip
+
+# Runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.json
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+config.local.*
