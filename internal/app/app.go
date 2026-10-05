@@ -64,8 +64,15 @@ type Progress struct {
 	Duration float64 `json:"duration"`
 	Updated  string  `json:"updated"`
 }
+type Settings struct {
+	ServerName    string `json:"server_name"`
+	AdminUser     string `json:"admin_user"`
+	AdminPassHash string `json:"admin_pass_hash"`
+}
+
 type Store struct {
 	ServerID      string             `json:"server_id"`
+	Settings      Settings           `json:"settings"`
 	NextLibraryID int64              `json:"next_library_id"`
 	NextMediaID   int64              `json:"next_media_id"`
 	Libraries     []Library          `json:"libraries"`
@@ -100,6 +107,10 @@ func (s *Server) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.st = Store{NextLibraryID: 1, NextMediaID: 1, Progress: map[int64]Progress{}}
+	s.st.Settings.ServerName = "BuddyFlix"
+	s.st.Settings.AdminUser = s.cfg.AdminUser
+	h := sha256.Sum256([]byte(s.cfg.AdminPassword))
+	s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
 	if s.st.ServerID == "" {
 		raw := make([]byte, 12)
 		_, _ = rand.Read(raw)
@@ -122,6 +133,17 @@ func (s *Server) load() error {
 		raw := make([]byte, 12)
 		_, _ = rand.Read(raw)
 		s.st.ServerID = hex.EncodeToString(raw)
+		if err := s.saveLocked(); err != nil { return err }
+	}
+	if s.st.Settings.ServerName == "" {
+		s.st.Settings.ServerName = "BuddyFlix"
+	}
+	if s.st.Settings.AdminUser == "" {
+		s.st.Settings.AdminUser = s.cfg.AdminUser
+	}
+	if s.st.Settings.AdminPassHash == "" {
+		h := sha256.Sum256([]byte(s.cfg.AdminPassword))
+		s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
 		if err := s.saveLocked(); err != nil { return err }
 	}
 	if s.st.NextLibraryID < 1 {
@@ -150,6 +172,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/logout", s.auth(s.logout))
 	s.mux.HandleFunc("/api/health", s.health)
 	s.mux.HandleFunc("/api/system", s.auth(s.system))
+	s.mux.HandleFunc("/api/settings", s.auth(s.settings))
+	s.mux.HandleFunc("/api/password", s.auth(s.password))
 	s.mux.HandleFunc("/api/libraries", s.auth(s.libraries))
 	s.mux.HandleFunc("/api/scan", s.auth(s.scan))
 	s.mux.HandleFunc("/api/media", s.auth(s.media))
@@ -184,9 +208,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "invalid json")
 		return
 	}
-	a := sha256.Sum256([]byte(x.Username + "\x00" + x.Password))
-	b := sha256.Sum256([]byte(s.cfg.AdminUser + "\x00" + s.cfg.AdminPassword))
-	if subtle.ConstantTimeCompare(a[:], b[:]) != 1 {
+	s.mu.RLock()
+	adminUser := s.st.Settings.AdminUser
+	adminPassHash := s.st.Settings.AdminPassHash
+	s.mu.RUnlock()
+	a := sha256.Sum256([]byte(x.Password))
+	b, _ := hex.DecodeString(adminPassHash)
+	userOK := subtle.ConstantTimeCompare([]byte(x.Username), []byte(adminUser)) == 1
+	passOK := len(b) == len(a) && subtle.ConstantTimeCompare(a[:], b) == 1
+	if !userOK || !passOK {
 		jsonErr(w, 401, "invalid credentials")
 		return
 	}
@@ -197,7 +227,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	s.sessions[t] = time.Now().Add(24 * time.Hour)
 	s.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{Name: "buddyflix_session", Value: t, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 86400})
-	jsonOut(w, map[string]any{"ok": true, "user": s.cfg.AdminUser})
+	jsonOut(w, map[string]any{"ok": true, "user": adminUser})
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("buddyflix_session"); e == nil {
@@ -236,9 +266,10 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RLock()
 	id := s.st.ServerID
+	name := s.st.Settings.ServerName
 	s.mu.RUnlock()
 	jsonOut(w, map[string]any{
-		"name": "BuddyFlix",
+		"name": name,
 		"server_id": id,
 		"version": Version,
 		"api_version": "1",
@@ -260,6 +291,89 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.Unlock()
 	jsonOut(w, map[string]any{"version": Version, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "libraries": lc, "scanning": sc, "tmdb": s.cfg.TMDBAPIKey != "", "storage": "embedded-json-v1"})
 }
+func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		s.mu.RLock()
+		out := map[string]any{
+			"server_name": s.st.Settings.ServerName,
+			"admin_user": s.st.Settings.AdminUser,
+			"server_id": s.st.ServerID,
+			"data_dir": s.cfg.DataDir,
+			"listen": s.cfg.ListenAddr,
+			"tmdb_configured": s.cfg.TMDBAPIKey != "",
+		}
+		s.mu.RUnlock()
+		jsonOut(w, out)
+	case "PUT":
+		var x struct {
+			ServerName string `json:"server_name"`
+			AdminUser  string `json:"admin_user"`
+		}
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
+			jsonErr(w, 400, "invalid json")
+			return
+		}
+		x.ServerName = strings.TrimSpace(x.ServerName)
+		x.AdminUser = strings.TrimSpace(x.AdminUser)
+		if x.ServerName == "" || x.AdminUser == "" {
+			jsonErr(w, 400, "server_name and admin_user required")
+			return
+		}
+		s.mu.Lock()
+		s.st.Settings.ServerName = x.ServerName
+		s.st.Settings.AdminUser = x.AdminUser
+		e := s.saveLocked()
+		s.mu.Unlock()
+		if e != nil {
+			jsonErr(w, 500, e.Error())
+			return
+		}
+		jsonOut(w, map[string]bool{"ok": true})
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
+}
+
+func (s *Server) password(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+	var x struct {
+		Current string `json:"current"`
+		New     string `json:"new"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
+		jsonErr(w, 400, "invalid json")
+		return
+	}
+	if len(x.New) < 8 {
+		jsonErr(w, 400, "new password must have at least 8 characters")
+		return
+	}
+	cur := sha256.Sum256([]byte(x.Current))
+	s.mu.RLock()
+	stored, _ := hex.DecodeString(s.st.Settings.AdminPassHash)
+	s.mu.RUnlock()
+	if len(stored) != len(cur) || subtle.ConstantTimeCompare(cur[:], stored) != 1 {
+		jsonErr(w, 403, "current password is wrong")
+		return
+	}
+	next := sha256.Sum256([]byte(x.New))
+	s.mu.Lock()
+	s.st.Settings.AdminPassHash = hex.EncodeToString(next[:])
+	e := s.saveLocked()
+	s.sessions = map[string]time.Time{}
+	s.mu.Unlock()
+	if e != nil {
+		jsonErr(w, 500, e.Error())
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: "buddyflix_session", Path: "/", MaxAge: -1, HttpOnly: true})
+	jsonOut(w, map[string]bool{"ok": true})
+}
+
 func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -267,7 +381,7 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 		x := append([]Library(nil), s.st.Libraries...)
 		s.mu.RUnlock()
 		jsonOut(w, x)
-	case "POST":
+	case "POST", "PUT":
 		var x Library
 		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
 			jsonErr(w, 400, "invalid json")
@@ -275,6 +389,9 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 		}
 		x.Name = strings.TrimSpace(x.Name)
 		x.Path = filepath.Clean(strings.TrimSpace(x.Path))
+		if r.Method == "PUT" {
+			x.ID, _ = strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		}
 		if x.Type == "" {
 			x.Type = "movies"
 		}
@@ -289,16 +406,32 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Lock()
 		for _, l := range s.st.Libraries {
-			if l.Path == x.Path {
+			if l.Path == x.Path && l.ID != x.ID {
 				s.mu.Unlock()
 				jsonErr(w, 400, "library path already exists")
 				return
 			}
 		}
-		x.ID = s.st.NextLibraryID
-		s.st.NextLibraryID++
 		x.Updated = time.Now().Format(time.RFC3339)
-		s.st.Libraries = append(s.st.Libraries, x)
+		if r.Method == "PUT" {
+			found := false
+			for i := range s.st.Libraries {
+				if s.st.Libraries[i].ID == x.ID {
+					s.st.Libraries[i] = x
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.mu.Unlock()
+				jsonErr(w, 404, "library not found")
+				return
+			}
+		} else {
+			x.ID = s.st.NextLibraryID
+			s.st.NextLibraryID++
+			s.st.Libraries = append(s.st.Libraries, x)
+		}
 		e = s.saveLocked()
 		s.mu.Unlock()
 		if e != nil {
