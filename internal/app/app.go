@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const Version = "0.1.1-dev"
+var Version = "0.1.1-dev"
 
 type Config struct{ ListenAddr, DataDir, AdminUser, AdminPassword, TMDBAPIKey string }
 
