@@ -584,7 +584,14 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 	libs := append([]Library(nil), s.st.Libraries...)
 	s.mu.RUnlock()
 	seen, updated := 0, 0
-	for _, lib := range libs {\n\t\ts.mu.Lock()\n\t\tfor i := range s.st.Media { if s.st.Media[i].LibraryID == lib.ID { s.st.Media[i].Missing = true } }\n\t\ts.mu.Unlock()
+	for _, lib := range libs {
+		s.mu.Lock()
+		for i := range s.st.Media {
+			if s.st.Media[i].LibraryID == lib.ID {
+				s.st.Media[i].Missing = true
+			}
+		}
+		s.mu.Unlock()
 		_ = filepath.WalkDir(lib.Path, func(path string, d fs.DirEntry, e error) error {
 			if e != nil || d.IsDir() || !videoExt[strings.ToLower(filepath.Ext(path))] {
 				return nil
