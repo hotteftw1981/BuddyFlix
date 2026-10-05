@@ -47,17 +47,23 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - Bibliotheken hinzufügen, bearbeiten und entfernen
 - Bibliothekstypen für Filme, Serien und andere Videos
 - Bibliotheksscans
+- robustere Scans bei nicht erreichbaren Bibliothekspfaden
+- Erkennung und getrennte Behandlung fehlender/verwaister Medien
+- QNAP-/NAS-Systemordner werden beim Scan übersprungen
+- Scan-Diagnose mit Anzahl gefundener Mediendateien und übersprungener Systemordner
 - erweiterte Verwaltungsoberfläche
 - TMDb-API-Key über die Webverwaltung
 - Medien manuell bearbeiten
 - Medienstatus gesehen / ungesehen
 - Wiedergabefortschritt zurücksetzen
-- Erkennung fehlender Mediendateien
 - Bereinigung verwaister Medieneinträge
 - TMDb-Suche mit auswählbaren Treffern
 - Übernahme eines gezielt ausgewählten TMDb-Treffers
 - Client-/Discovery-Endpunkte für spätere Apps
-- GitHub CI mit Tests sowie AMD64- und ARMHF-Build
+- dynamische Versionsanzeige im Frontend
+- eindeutige Dev-Buildnummern für QNAP-Testpakete
+- GitHub CI mit Tests, JavaScript-Syntaxcheck sowie AMD64- und ARMHF-Build
+- automatische Erzeugung eines installierbaren QNAP-ARMHF-Dev-QPKG als GitHub-Actions-Artifact
 
 **Wichtig:** Diese Liste beschreibt den aktuellen Entwicklungsstand des Codes – nicht automatisch den Stand eines veröffentlichten QPKG.
 
@@ -130,6 +136,7 @@ Perspektivisch geplant:
 - PWA
 - erweiterte Systemüberwachung
 - NAS Protection / Lastbegrenzung
+- BuddyFlix-Splashscreen/Startbild für Web und Fire TV
 
 ---
 
@@ -182,7 +189,7 @@ Installation des stabilen Pakets:
 
 Die V0.1.0-QPKG-Struktur wurde auf einem TS-431P2 erfolgreich installiert und gestartet.
 
-**Hinweis zum develop-Branch:** Nicht jeder Commit besitzt automatisch ein installierbares oder getestetes QPKG.
+Für `develop` werden fortlaufend eindeutig versionierte Testpakete gebaut, z. B. `0.1.1-dev.36`. Diese Builds sind **keine Stable Releases** und dienen ausschließlich zum Testen des aktuellen Entwicklungsstands.
 
 ---
 
@@ -204,6 +211,7 @@ Aktuell:
 - lokale Persistenz
 - QNAP-QPKG-Paketierung
 - Direct-Play-orientierte Architektur
+- GitHub Actions für Tests und Dev-Paketbau
 
 In Entwicklung:
 
@@ -211,7 +219,7 @@ In Entwicklung:
 - SQLite
 - ffprobe / FFmpeg Integration
 - Multiarch-Builds
-- automatisierte Releases
+- automatisierte Stable Releases
 - Fire-TV-Client
 
 ---
@@ -246,12 +254,17 @@ Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
 - persistente Servereinstellungen
 - ausgebaute Administration
 - Bibliotheksverwaltung
+- robustere QNAP-Bibliotheksscans
+- fehlende/verwaiste Medien getrennt vom normalen Filmbestand
+- NAS-Systemordner beim Scan ausgeschlossen
+- dynamische Dev-Buildnummern
+- installierbare QNAP-ARMHF-Dev-QPKGs über GitHub Actions
 - TMDb-Konfiguration
 - Medieneditor
 - Medienstatus und Bereinigung
 - auswählbare TMDb-Treffer
 - erste Client-/Discovery-API
-- CI für Tests, AMD64 und ARMHF
+- CI für Go-Tests, JavaScript-Syntaxcheck, AMD64 und ARMHF
 
 ### V0.1.0
 
