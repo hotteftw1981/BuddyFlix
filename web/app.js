@@ -61,6 +61,13 @@ async function renderAdmin(){
       </form>
     </section>
 
+    <section class="panel span-2">
+      <div class="panel-title"><div><h3>Medienverwaltung</h3><p class="muted">Titel prüfen, Status korrigieren und verwaiste Einträge bereinigen.</p></div><div class="toolbar"><button class="btn ghost" id="filtermeta">Ohne Metadaten</button><button class="btn ghost" id="filtermissing">Fehlende Dateien</button><button class="btn danger" id="cleanupmissing">Fehlende bereinigen</button></div></div>
+      <div class="media-admin" id="medialist">
+        ${adminMediaRows(state.media)}
+      </div>
+    </section>
+
     <section class="panel">
       <div class="panel-title"><div><h3>Metadaten</h3><p class="muted">Poster, Backdrops und Beschreibungen.</p></div><span class="badge ${cfg.tmdb_configured?'ok':'warn'}">${cfg.tmdb_configured?'aktiv':'nicht konfiguriert'}</span></div>
       <form id="tmdbform">
@@ -88,7 +95,15 @@ async function renderAdmin(){
   $('#passwordform').onsubmit=changePassword;
   $('#tmdbform').onsubmit=saveTMDb;
   const clear=$('#cleartmdb'); if(clear) clear.onclick=clearTMDb;
+  $('#filtermeta').onclick=()=>renderAdminMedia('metadata');
+  $('#filtermissing').onclick=()=>renderAdminMedia('missing');
+  $('#cleanupmissing').onclick=cleanupMissing;
 }
+function adminMediaRows(items){if(!items.length)return '<div class="empty">Keine Medien vorhanden.</div>';return items.map(m=>`<div class="media-admin-row ${m.missing?'is-missing':''}"><div class="media-admin-poster">${m.poster?`<img src="${esc(m.poster)}">`:'▶'}</div><div class="media-admin-main"><strong>${esc(m.title)}</strong><div class="muted">${m.year||'ohne Jahr'} · ${m.overview?'Metadaten vorhanden':'ohne Metadaten'}${m.missing?' · Datei fehlt':''}</div><div class="pathline">${esc(m.path)}</div></div><div class="toolbar"><button class="btn ghost" onclick="editMediaById(${m.id})">Bearbeiten</button><button class="btn ghost" onclick="mediaAction(${m.id},'${m.progress>=95?'mark_unwatched':'mark_watched'}')">${m.progress>=95?'Ungesehen':'Gesehen'}</button><button class="btn ghost" onclick="mediaAction(${m.id},'reset_progress')">Fortschritt 0</button></div></div>`).join('')}
+function renderAdminMedia(mode='all'){let items=state.media;if(mode==='metadata')items=items.filter(m=>!m.poster||!m.overview);if(mode==='missing')items=items.filter(m=>m.missing);$('#medialist').innerHTML=adminMediaRows(items)}
+async function mediaAction(id,action){try{await api('/api/media/action',{method:'POST',body:JSON.stringify({media_id:id,action})});await refresh();renderAdminMedia();toast('Medienstatus aktualisiert')}catch(x){toast(x.message)}}
+async function cleanupMissing(){if(!confirm('Alle Einträge entfernen, deren Mediendatei beim letzten Scan nicht mehr gefunden wurde? Die Dateien selbst werden nicht gelöscht.'))return;try{let r=await api('/api/media/cleanup',{method:'POST'});toast(r.removed+' verwaiste Einträge entfernt');await refresh();renderAdmin()}catch(x){toast(x.message)}}
+async function editMediaById(id){let a=await api('/api/media?id='+id);if(a[0])editMedia(a[0])}
 async function addLib(e){e.preventDefault();try{await api('/api/libraries',{method:'POST',body:JSON.stringify({name:e.target.name.value,path:e.target.path.value,type:e.target.type.value})});toast('Bibliothek hinzugefügt');e.target.reset();await refresh();renderAdmin()}catch(x){toast(x.message)}}
 async function removeLib(id){if(!confirm('Bibliothek und Index entfernen? Die Mediendateien bleiben unangetastet.'))return;await api('/api/libraries?id='+id,{method:'DELETE'});await refresh();renderAdmin()}
 async function editLib(id){let l=state.libs.find(x=>x.id===id);if(!l)return;let el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="modalbox compact"><div class="panel"><div class="panel-title"><h3>Bibliothek bearbeiten</h3><button class="close">×</button></div><form id="editlib"><label class="field">Name<input name="name" value="${esc(l.name)}"></label><label class="field">Typ<select name="type"><option value="movies" ${l.type==='movies'?'selected':''}>Filme</option><option value="shows" ${l.type==='shows'?'selected':''}>Serien</option><option value="other" ${l.type==='other'?'selected':''}>Andere Videos</option></select></label><label class="field">Pfad<input name="path" value="${esc(l.path)}"></label><button class="btn primary">Änderungen speichern</button></form></div></div>`;document.body.append(el);el.querySelector('.close').onclick=()=>el.remove();el.querySelector('#editlib').onsubmit=async e=>{e.preventDefault();try{await api('/api/libraries?id='+id,{method:'PUT',body:JSON.stringify({name:e.target.name.value,path:e.target.path.value,type:e.target.type.value})});toast('Bibliothek aktualisiert');el.remove();await refresh();renderAdmin()}catch(x){toast(x.message)}}}
