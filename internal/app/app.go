@@ -720,6 +720,58 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, out)
 }
+
+func (s *Server) mediaAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	var x struct { MediaID int64 `json:"media_id"`; Action string `json:"action"` }
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil || x.MediaID < 1 { jsonErr(w, 400, "invalid json"); return }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.st.Media {
+		if s.st.Media[i].ID != x.MediaID { continue }
+		switch x.Action {
+		case "reset_progress", "mark_unwatched":
+			delete(s.st.Progress, x.MediaID)
+		case "mark_watched":
+			s.st.Progress[x.MediaID] = Progress{Position: 1, Duration: 1, Updated: time.Now().Format(time.RFC3339)}
+		case "lock_metadata":
+			s.st.Media[i].MetadataLocked = true
+		case "unlock_metadata":
+			s.st.Media[i].MetadataLocked = false
+		default:
+			jsonErr(w, 400, "unknown action"); return
+		}
+		if err := s.saveLocked(); err != nil { jsonErr(w, 500, err.Error()); return }
+		jsonOut(w, map[string]bool{"ok": true})
+		return
+	}
+	jsonErr(w, 404, "media not found")
+}
+
+func (s *Server) mediaCleanup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	s.mu.Lock()
+	kept := s.st.Media[:0]
+	removed := 0
+	for _, m := range s.st.Media {
+		if m.Missing { delete(s.st.Progress, m.ID); removed++; continue }
+		kept = append(kept, m)
+	}
+	s.st.Media = kept
+	err := s.saveLocked()
+	s.mu.Unlock()
+	if err != nil { jsonErr(w, 500, err.Error()); return }
+	jsonOut(w, map[string]any{"ok": true, "removed": removed})
+}
+
+func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
+	jsonErr(w, 501, "metadata search not implemented yet")
+}
+
+func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
+	jsonErr(w, 501, "metadata apply not implemented yet")
+}
+
 func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		jsonErr(w, 405, "method not allowed")
