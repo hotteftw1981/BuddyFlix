@@ -18,26 +18,36 @@ Und weil wir offensichtlich nicht genug Projekte gleichzeitig haben:
 
 BuddyFlix befindet sich aktuell in einer sehr frühen Entwicklungsphase.
 
-**Aktueller Stand: V0.1.0**
+**Aktueller stabiler Stand: V0.1.0**
 
-Die erste Version läuft bereits als echtes **QNAP-QPKG** auf einem TS-431P2 und kann direkt über das QNAP App Center manuell installiert werden.
+V0.1.0 ist ausdrücklich ein **Proof of Concept**. Der wichtigste Meilenstein dieser Version ist: BuddyFlix lässt sich als echtes **QNAP-QPKG** auf einem TS-431P2 installieren und startet dort erfolgreich.
 
-### Bereits vorhanden
+### In V0.1.0 tatsächlich bestätigt
 
-- Login
-- moderne Dark-Mode-Weboberfläche
+- Installation als QNAP-QPKG über das App Center
+- Start auf QNAP TS-431P2 / ARMHF / ARMv7
+- BuddyFlix-Weboberfläche erreichbar
+- Login funktioniert
+- Backend läuft auf Port 8096
+- statisches ARMv7-Binary
+- erste Dark-Mode-Oberfläche
+- grundlegende Server-API vorhanden
+
+### Bereits im Code angelegt, aber in V0.1.0 noch nicht als fertig zu betrachten
+
 - Bibliotheken
 - Medien-Scanner
 - Filmsuche
 - Filmübersicht
 - Detailansicht
-- Direct Play
-- HTTP Range Requests
+- Direct Play / HTTP Range Streaming
 - Wiedergabefortschritt
 - „Weiterschauen“
-- Systemstatus
-- QNAP-QPKG für ARMHF / ARMv7
-- ARMHF-first Architektur
+- Systeminformationen
+
+Diese Bereiche werden aktuell auf dem `develop`-Branch ausgebaut, getestet und erst nach erfolgreichem Praxistest als fertige Funktionen beworben.
+
+> **„Erst testen, dann angeben.“** 😄
 
 ---
 
@@ -52,7 +62,7 @@ Passwort: buddyflix
 
 > **Bitte das Standardpasswort nicht für einen öffentlich erreichbaren Server verwenden.**
 
-Ein erzwungener Passwortwechsel beim ersten Start ist bereits als sinnvoller nächster Schritt vorgesehen.
+Der `develop`-Stand ersetzt diese Standardanmeldung bereits durch eine Ersteinrichtung mit eigenem Benutzernamen und Passwort.
 
 ---
 
@@ -131,7 +141,7 @@ Oder anders gesagt:
 
 ## 🖥️ Referenzhardware
 
-Entwicklung und erster Produktivtest:
+Entwicklung und erster bestätigter QNAP-Test:
 
 - **QNAP TS-431P2**
 - AnnapurnaLabs Alpine AL-314
@@ -139,15 +149,13 @@ Entwicklung und erster Produktivtest:
 - ARMv7 / ARMHF
 - 8 GB RAM
 
-BuddyFlix wird so entwickelt, dass dieses Gerät als Mindestniveau gilt.
-
-Wenn es dort flott läuft, läuft es auf neuerer Hardware erst recht.
+BuddyFlix wird so entwickelt, dass dieses Gerät als Referenz für schwächere ARMHF-Hardware dient.
 
 ---
 
 ## 📦 QNAP
 
-Die aktuelle QNAP-Version wird als **.qpkg** bereitgestellt.
+BuddyFlix wird als **.qpkg** für QNAP vorbereitet.
 
 Installation:
 
@@ -156,15 +164,9 @@ Installation:
 3. „Manuell installieren“
 4. BuddyFlix-QPKG auswählen
 5. installieren
-6. BuddyFlix im Browser öffnen
+6. BuddyFlix im Browser auf Port 8096 öffnen
 
-Standard-Port:
-
-```
-8096
-```
-
-Aktuell ist die erste QPKG-Linie speziell auf ARMHF-/ARMv7-QNAPs ausgelegt.
+Die V0.1.0-QPKG-Struktur wurde auf einem TS-431P2 erfolgreich installiert und gestartet.
 
 ---
 
@@ -182,16 +184,20 @@ Aktuell:
 
 - Go Backend
 - statisches ARMv7-Binary
-- eingebettete Weboberfläche
+- Weboberfläche
 - lokale Persistenz
 - QNAP-QPKG-Paketierung
-- Direct-Play-orientierter Streaming-Stack
+- Direct-Play-orientierte Architektur
 
-Geplant:
+Geplant bzw. in Entwicklung:
 
+- echte Verwaltungsoberfläche
+- First-Run-Setup
+- Medienverwaltung
+- TMDb-Identifikation
+- Serienstruktur
 - SQLite
 - ffprobe / FFmpeg Integration
-- erweiterte Metadaten-Provider
 - Multiarch-Builds
 - automatisierte Releases
 
@@ -219,22 +225,17 @@ Oder inoffiziell:
 
 ### V0.1.0
 
-Erster lauffähiger BuddyFlix-Stand.
+Erster bestätigter QNAP-Proof-of-Concept.
 
 - ARMHF-/ARMv7-Serverbasis
 - Login
-- Dark-Mode-Webinterface
-- Bibliotheksverwaltung
-- Medien-Scanner
-- Filmsuche
-- Filmansicht
-- Direct Play
-- Range-Streaming
-- Wiedergabefortschritt
-- „Weiterschauen“
-- Systemstatus
-- funktionierendes QNAP-QPKG für TS-431P2
-- QNAP App Center Installation erfolgreich getestet
+- Dark-Mode-Weboberfläche
+- BuddyFlix startet auf einem QNAP TS-431P2
+- Installation über QNAP App Center erfolgreich getestet
+- Port 8096 erreichbar
+- Basis für Scanner, Streaming und Medienverwaltung im Code vorbereitet
+
+**Wichtig:** V0.1.0 ist noch kein fertiger Media Server, sondern der erste lauffähige Grundstein.
 
 ---
 
