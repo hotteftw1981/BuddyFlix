@@ -813,7 +813,40 @@ func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
-	jsonErr(w, 501, "metadata apply not implemented yet")
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	var x struct {
+		MediaID int64 `json:"media_id"`
+		Result TMDbSearchResult `json:"result"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil || x.MediaID < 1 {
+		jsonErr(w, 400, "invalid json")
+		return
+	}
+	if strings.TrimSpace(x.Result.Title) == "" {
+		jsonErr(w, 400, "result title required")
+		return
+	}
+	s.mu.Lock()
+	found := false
+	for i := range s.st.Media {
+		if s.st.Media[i].ID != x.MediaID { continue }
+		s.st.Media[i].Title = strings.TrimSpace(x.Result.Title)
+		s.st.Media[i].Year = x.Result.Year
+		s.st.Media[i].Overview = strings.TrimSpace(x.Result.Overview)
+		s.st.Media[i].Poster = strings.TrimSpace(x.Result.Poster)
+		s.st.Media[i].Backdrop = strings.TrimSpace(x.Result.Backdrop)
+		found = true
+		break
+	}
+	if !found {
+		s.mu.Unlock()
+		jsonErr(w, 404, "media not found")
+		return
+	}
+	err := s.saveLocked()
+	s.mu.Unlock()
+	if err != nil { jsonErr(w, 500, err.Error()); return }
+	jsonOut(w, map[string]bool{"ok": true})
 }
 
 func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
