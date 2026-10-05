@@ -605,6 +605,7 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 			}
 			if found >= 0 {
 				s.st.Media[found].LibraryID = lib.ID
+				s.st.Media[found].Missing = false
 				if strings.TrimSpace(s.st.Media[found].Title) == "" {
 					s.st.Media[found].Title = title
 				}
