@@ -599,8 +599,12 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 			}
 			if found >= 0 {
 				s.st.Media[found].LibraryID = lib.ID
-				s.st.Media[found].Title = title
-				s.st.Media[found].Year = year
+				if strings.TrimSpace(s.st.Media[found].Title) == "" {
+					s.st.Media[found].Title = title
+				}
+				if s.st.Media[found].Year == 0 {
+					s.st.Media[found].Year = year
+				}
 				s.st.Media[found].MTime = info.ModTime().Unix()
 				s.st.Media[found].Size = info.Size()
 			} else {
