@@ -24,6 +24,9 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Check frontend JavaScript
+        run: node --check web/app.js
+
       - name: Build linux amd64
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o buddyflix-amd64 ./cmd/buddyflix
 
