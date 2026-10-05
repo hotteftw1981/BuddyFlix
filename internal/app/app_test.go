@@ -104,3 +104,65 @@ func TestMediaEditPersists(t *testing.T) {
 		t.Fatalf("media edit not persisted: %+v", s.st.Media[0])
 	}
 }
+
+
+func TestMediaActions(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = append(s.st.Media, Media{ID: 1, Title: "Movie"})
+	s.st.NextMediaID = 2
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/media/action", bytes.NewBufferString(`{"media_id":1,"action":"mark_watched"}`))
+	rec := httptest.NewRecorder()
+	s.mediaAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("mark watched failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	s.mu.RLock()
+	p, ok := s.st.Progress[1]
+	s.mu.RUnlock()
+	if !ok || p.Duration != 1 || p.Position != 1 {
+		t.Fatalf("watched state not stored: %+v", p)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/media/action", bytes.NewBufferString(`{"media_id":1,"action":"reset_progress"}`))
+	rec = httptest.NewRecorder()
+	s.mediaAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset failed: %d %s", rec.Code, rec.Body.String())
+	}
+	s.mu.RLock()
+	_, ok = s.st.Progress[1]
+	s.mu.RUnlock()
+	if ok {
+		t.Fatal("progress should have been removed")
+	}
+}
+
+func TestCleanupMissingMedia(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{
+		{ID: 1, Title: "Present"},
+		{ID: 2, Title: "Missing", Missing: true},
+	}
+	s.st.Progress[2] = Progress{Position: 10, Duration: 20}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/media/cleanup", nil)
+	rec := httptest.NewRecorder()
+	s.mediaCleanup(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cleanup failed: %d %s", rec.Code, rec.Body.String())
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.st.Media) != 1 || s.st.Media[0].ID != 1 {
+		t.Fatalf("unexpected media after cleanup: %+v", s.st.Media)
+	}
+	if _, ok := s.st.Progress[2]; ok {
+		t.Fatal("progress for removed item should also be removed")
+	}
+}
