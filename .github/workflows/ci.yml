@@ -80,6 +80,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/dist"
           OUT="$GITHUB_WORKSPACE/dist/BuddyFlix_${APP_VERSION}_TS431P2_ARMHF.qpkg"
           cp "$FOUND" "$OUT"
+          cd "$GITHUB_WORKSPACE"
+          python3 packaging/qnap/fix_qpkg_tail.py "$OUT"
           sha256sum "$OUT" > "$OUT.sha256"
 
       - name: Upload QNAP dev QPKG
