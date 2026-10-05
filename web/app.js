@@ -9,9 +9,85 @@ function view(v,b){document.querySelectorAll('.nav button').forEach(x=>x.classLi
 function card(m){return `<article class="card" onclick="detail(${m.id})"><div class="poster">${m.poster?`<img loading="lazy" src="${esc(m.poster)}">`:`<div class="placeholder">▶</div>`}${m.progress>0&&m.progress<95?`<div class="progress"><i style="width:${Math.min(100,m.progress)}%"></i></div>`:''}</div><div class="card-title">${esc(m.title)}</div><div class="card-meta">${m.year||'Film'}${m.progress>=95?' · ✓ gesehen':''}</div></article>`}
 function renderHome(){let cont=state.media.filter(m=>m.progress>1&&m.progress<95).slice(0,8),hero=state.media.find(m=>m.backdrop)||state.media[0];$('#content').innerHTML=`${hero?`<section class="hero"><div class="hero-bg" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div><div class="hero-copy"><div class="muted">BUDDYFLIX EMPFIEHLT</div><h1>${esc(hero.title)}</h1><p>${esc(hero.overview||'Deine Medienbibliothek auf dem QNAP – direkt, schnell und ohne Ballast.')}</p><button class="btn primary" onclick="play(${hero.id})">▶ Abspielen</button></div></section>`:''}${cont.length?`<div class="rowhead"><h2>Weiterschauen</h2></div><div class="grid">${cont.map(card).join('')}</div>`:''}<div class="rowhead"><h2>Neu hinzugefügt</h2><span class="muted">${state.media.length} Titel</span></div><div class="grid">${state.media.slice(0,18).map(card).join('')||'<div class="muted">Noch keine Medien. Lege unter Verwaltung eine Bibliothek an.</div>'}</div>`}
 function renderMovies(){if(!$('#content'))return;$('#content').innerHTML=`<div class="rowhead"><h2>Filme</h2><span class="muted">${state.media.length} Titel</span></div><div class="grid">${state.media.map(card).join('')||'<div class="muted">Keine Treffer.</div>'}</div>`}
-async function renderAdmin(){state.system=await api('/api/system');state.libs=await api('/api/libraries');let s=state.system;$('#content').innerHTML=`<div class="rowhead"><h2>Verwaltung</h2><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div><div class="stats"><div class="stat"><b>${s.media}</b><span>Medien</span></div><div class="stat"><b>${s.libraries}</b><span>Bibliotheken</span></div><div class="stat"><b>${s.cpus}</b><span>CPU Threads</span></div><div class="stat"><b>${s.memory_mb} MB</b><span>BuddyFlix RAM</span></div></div><div class="split" style="margin-top:18px"><section class="panel"><h3>Bibliotheken</h3><table class="table"><thead><tr><th>Name</th><th>Pfad</th><th></th></tr></thead><tbody>${state.libs.map(l=>`<tr><td>${esc(l.name)}</td><td class="muted">${esc(l.path)}</td><td><button class="btn danger" onclick="removeLib(${l.id})">×</button></td></tr>`).join('')}</tbody></table><form id="libform"><label class="field">Name<input name="name" placeholder="Filme"></label><label class="field">QNAP-Pfad<input name="path" placeholder="/share/Multimedia/Filme"></label><button class="btn primary">Bibliothek hinzufügen</button></form></section><section class="panel"><h3>System</h3><table class="table"><tr><td>Version</td><td>${s.version}</td></tr><tr><td>Plattform</td><td>${s.os}/${s.arch}</td></tr><tr><td>Go</td><td>${s.go}</td></tr><tr><td>Uptime</td><td>${Math.floor(s.uptime_sec/60)} min</td></tr><tr><td>TMDb</td><td>${s.tmdb?'aktiv':'nicht konfiguriert'}</td></tr><tr><td>Scanner</td><td>${s.scanning?'läuft':'bereit'}</td></tr></table><p class="muted">TMDb optional über die Umgebungsvariable <code>TMDB_API_KEY</code>.</p></section></div>`;$('#scan').onclick=doScan;$('#libform').onsubmit=addLib}
-async function addLib(e){e.preventDefault();try{await api('/api/libraries',{method:'POST',body:JSON.stringify({name:e.target.name.value,path:e.target.path.value,type:'movies'})});toast('Bibliothek hinzugefügt');renderAdmin()}catch(x){toast(x.message)}}
+async function renderAdmin(){
+  state.system=await api('/api/system');
+  state.libs=await api('/api/libraries');
+  state.settings=await api('/api/settings');
+  let s=state.system, cfg=state.settings;
+  $('#content').innerHTML=`
+  <div class="rowhead"><div><h2>Verwaltung</h2><div class="muted">Server, Bibliotheken und Zugriff verwalten</div></div><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div>
+  <div class="stats">
+    <div class="stat"><b>${s.media}</b><span>Medien</span></div>
+    <div class="stat"><b>${s.libraries}</b><span>Bibliotheken</span></div>
+    <div class="stat"><b>${s.cpus}</b><span>CPU Threads</span></div>
+    <div class="stat"><b>${s.memory_mb} MB</b><span>BuddyFlix RAM</span></div>
+  </div>
+
+  <div class="admin-grid">
+    <section class="panel">
+      <div class="panel-title"><div><h3>Server</h3><p class="muted">Grundlegende Identität deines BuddyFlix-Servers.</p></div><span class="badge">V${esc(s.version)}</span></div>
+      <form id="settingsform">
+        <label class="field">Servername<input name="server_name" value="${esc(cfg.server_name)}"></label>
+        <label class="field">Admin-Benutzer<input name="admin_user" value="${esc(cfg.admin_user)}"></label>
+        <div class="kv"><span>Server-ID</span><code>${esc(cfg.server_id)}</code></div>
+        <div class="kv"><span>Listen-Adresse</span><code>${esc(cfg.listen)}</code></div>
+        <div class="kv"><span>Datenordner</span><code>${esc(cfg.data_dir)}</code></div>
+        <button class="btn primary">Einstellungen speichern</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><div><h3>Sicherheit</h3><p class="muted">Admin-Passwort ändern.</p></div></div>
+      <form id="passwordform">
+        <label class="field">Aktuelles Passwort<input name="current" type="password" autocomplete="current-password"></label>
+        <label class="field">Neues Passwort<input name="next" type="password" minlength="8" autocomplete="new-password"></label>
+        <label class="field">Neues Passwort wiederholen<input name="repeat" type="password" minlength="8" autocomplete="new-password"></label>
+        <button class="btn primary">Passwort ändern</button>
+      </form>
+      <div class="notice">Nach dem Passwortwechsel werden alle laufenden Sitzungen beendet.</div>
+    </section>
+
+    <section class="panel span-2">
+      <div class="panel-title"><div><h3>Bibliotheken</h3><p class="muted">Medienpfade auf dem NAS hinzufügen, bearbeiten und scannen.</p></div><span class="badge">${state.libs.length}</span></div>
+      <div class="library-list">
+        ${state.libs.map(l=>`<div class="library-item"><div><strong>${esc(l.name)}</strong><div class="muted">${esc(l.type)} · ${esc(l.path)}</div></div><div class="toolbar"><button class="btn ghost" onclick="editLib(${l.id})">Bearbeiten</button><button class="btn danger" onclick="removeLib(${l.id})">Entfernen</button></div></div>`).join('')||'<div class="empty">Noch keine Bibliothek angelegt.</div>'}
+      </div>
+      <form id="libform" class="inline-form">
+        <label class="field">Name<input name="name" placeholder="Filme"></label>
+        <label class="field">Typ<select name="type"><option value="movies">Filme</option><option value="shows">Serien</option><option value="other">Andere Videos</option></select></label>
+        <label class="field grow">QNAP-Pfad<input name="path" placeholder="/share/Multimedia/Filme"></label>
+        <button class="btn primary">Hinzufügen</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><div><h3>Metadaten</h3><p class="muted">Poster, Backdrops und Beschreibungen.</p></div><span class="badge ${cfg.tmdb_configured?'ok':'warn'}">${cfg.tmdb_configured?'aktiv':'nicht konfiguriert'}</span></div>
+      <p>TMDb-Unterstützung ist im Server bereits vorhanden. Der API-Key wird aktuell noch über <code>TMDB_API_KEY</code> bereitgestellt.</p>
+      <p class="muted">Als Nächstes wandert das sauber in die Verwaltung, damit dafür keine Konsole nötig ist.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><div><h3>System</h3><p class="muted">Aktueller Serverzustand.</p></div><span class="badge ${s.scanning?'warn':'ok'}">${s.scanning?'Scan läuft':'bereit'}</span></div>
+      <table class="table">
+        <tr><td>Plattform</td><td>${s.os}/${s.arch}</td></tr>
+        <tr><td>Go</td><td>${s.go}</td></tr>
+        <tr><td>Uptime</td><td>${Math.floor(s.uptime_sec/60)} min</td></tr>
+        <tr><td>Goroutines</td><td>${s.goroutines}</td></tr>
+        <tr><td>Persistenz</td><td>${esc(s.storage)}</td></tr>
+      </table>
+    </section>
+  </div>`;
+
+  $('#scan').onclick=doScan;
+  $('#libform').onsubmit=addLib;
+  $('#settingsform').onsubmit=saveSettings;
+  $('#passwordform').onsubmit=changePassword;
+}
+async function addLib(e){e.preventDefault();try{await api('/api/libraries',{method:'POST',body:JSON.stringify({name:e.target.name.value,path:e.target.path.value,type:e.target.type.value})});toast('Bibliothek hinzugefügt');e.target.reset();await refresh();renderAdmin()}catch(x){toast(x.message)}}
 async function removeLib(id){if(!confirm('Bibliothek und Index entfernen? Die Mediendateien bleiben unangetastet.'))return;await api('/api/libraries?id='+id,{method:'DELETE'});await refresh();renderAdmin()}
+async function editLib(id){let l=state.libs.find(x=>x.id===id);if(!l)return;let el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="modalbox compact"><div class="panel"><div class="panel-title"><h3>Bibliothek bearbeiten</h3><button class="close">×</button></div><form id="editlib"><label class="field">Name<input name="name" value="${esc(l.name)}"></label><label class="field">Typ<select name="type"><option value="movies" ${l.type==='movies'?'selected':''}>Filme</option><option value="shows" ${l.type==='shows'?'selected':''}>Serien</option><option value="other" ${l.type==='other'?'selected':''}>Andere Videos</option></select></label><label class="field">Pfad<input name="path" value="${esc(l.path)}"></label><button class="btn primary">Änderungen speichern</button></form></div></div>`;document.body.append(el);el.querySelector('.close').onclick=()=>el.remove();el.querySelector('#editlib').onsubmit=async e=>{e.preventDefault();try{await api('/api/libraries?id='+id,{method:'PUT',body:JSON.stringify({name:e.target.name.value,path:e.target.path.value,type:e.target.type.value})});toast('Bibliothek aktualisiert');el.remove();await refresh();renderAdmin()}catch(x){toast(x.message)}}}
+async function saveSettings(e){e.preventDefault();try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:e.target.server_name.value,admin_user:e.target.admin_user.value})});toast('Servereinstellungen gespeichert');renderAdmin()}catch(x){toast(x.message)}}
+async function changePassword(e){e.preventDefault();if(e.target.next.value!==e.target.repeat.value){toast('Die neuen Passwörter stimmen nicht überein');return}try{await api('/api/password',{method:'POST',body:JSON.stringify({current:e.target.current.value,new:e.target.next.value})});toast('Passwort geändert – bitte neu anmelden');setTimeout(loginView,700)}catch(x){toast(x.message)}}
 async function doScan(){let b=$('#scan');b.disabled=true;b.textContent='Scan läuft…';try{let r=await api('/api/scan',{method:'POST'});toast(`${r.files_seen} Dateien gefunden`);await refresh();renderAdmin()}catch(x){toast(x.message)}finally{b.disabled=false}}
 async function refresh(){state.media=await api('/api/media');state.libs=await api('/api/libraries');state.system=await api('/api/system')}
 async function detail(id){let a=await api('/api/media?id='+id),m=a[0];if(!m)return;let el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="modalbox"><div class="moviehero" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"><button class="close">×</button><div class="moviecopy"><div class="muted">${m.year||''}</div><h1>${esc(m.title)}</h1><p>${esc(m.overview||'Für diesen Titel wurden noch keine Metadaten geladen.')}</p><div class="modalactions"><button class="btn primary" id="p">▶ Abspielen</button><button class="btn ghost" id="meta">Metadaten laden</button></div></div></div></div>`;document.body.append(el);el.querySelector('.close').onclick=()=>el.remove();el.onclick=e=>{if(e.target===el)el.remove()};el.querySelector('#p').onclick=()=>{el.remove();play(id)};el.querySelector('#meta').onclick=async()=>{try{await api('/api/metadata/'+id,{method:'POST'});toast('Metadaten aktualisiert');el.remove();await refresh();renderHome()}catch(x){toast(x.message)}}}
