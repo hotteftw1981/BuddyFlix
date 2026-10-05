@@ -41,6 +41,21 @@ Die erste Version läuft bereits als echtes **QNAP-QPKG** auf einem TS-431P2 und
 
 ---
 
+## 🔑 Standard-Login
+
+Für die aktuelle **V0.1.0** gelten bei einer frischen Installation zunächst diese Zugangsdaten:
+
+```text
+Benutzer: admin
+Passwort: buddyflix
+```
+
+> **Bitte das Standardpasswort nicht für einen öffentlich erreichbaren Server verwenden.**
+
+Ein erzwungener Passwortwechsel beim ersten Start ist bereits als sinnvoller nächster Schritt vorgesehen.
+
+---
+
 ## 🎯 Ziel
 
 BuddyFlix soll **kein 1:1-Jellyfin-Klon** werden.
@@ -216,4 +231,3 @@ Das Projekt ist öffentlich, weil wir finden:
 > **„Wenn wir schon so einen Unsinn bauen, dann wenigstens öffentlich.“** 😄
 
 Beiträge, Tests, Ideen und Bugreports sind willkommen.
-
