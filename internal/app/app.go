@@ -461,7 +461,7 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		s.mu.RLock()
-		x := append([]Library(nil), s.st.Libraries...)
+		x := append([]Library{}, s.st.Libraries...)
 		s.mu.RUnlock()
 		jsonOut(w, x)
 	case "POST", "PUT":
