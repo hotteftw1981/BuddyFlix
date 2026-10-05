@@ -166,3 +166,30 @@ func TestCleanupMissingMedia(t *testing.T) {
 		t.Fatal("progress for removed item should also be removed")
 	}
 }
+
+
+func TestScanKeepsMediaWhenLibraryUnavailable(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Libraries = []Library{{ID: 1, Name: "Movies", Path: "/definitely/not/mounted"}}
+	s.st.Media = []Media{{ID: 1, LibraryID: 1, Title: "Keep me", Path: "/definitely/not/mounted/movie.mkv"}}
+	s.st.NextLibraryID = 2
+	s.st.NextMediaID = 2
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/scan", nil)
+	rec := httptest.NewRecorder()
+	s.scan(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scan failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.st.Media) != 1 {
+		t.Fatalf("media index changed unexpectedly: %+v", s.st.Media)
+	}
+	if s.st.Media[0].Missing {
+		t.Fatal("unavailable library must not mark existing media as missing")
+	}
+}
