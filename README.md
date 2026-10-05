@@ -1,5 +1,10 @@
 # 🎬 BuddyFlix
 
+> ⚠️ **Development Branch**
+>
+> Dieser Branch enthält unfertige, experimentelle und noch nicht vollständig getestete Funktionen.
+> Für den stabilen Stand bitte **`main`** verwenden.
+
 > **„Wenn Jellyfin auf ARMHF stehen bleibt, bauen wir halt selbst weiter.“**
 
 BuddyFlix ist ein schlanker, moderner Media Server mit Fokus auf ältere und schwächere NAS-Hardware – begonnen auf einem **QNAP TS-431P2 (ARMHF / ARMv7, 8 GB RAM)**.
@@ -16,34 +21,53 @@ Und weil wir offensichtlich nicht genug Projekte gleichzeitig haben:
 
 ## 🚧 Status
 
-BuddyFlix befindet sich aktuell in einer sehr frühen Entwicklungsphase.
+**Stabiler Stand auf `main`: V0.1.0**
 
-**Aktueller Stand: V0.1.0**
+**Aktueller Entwicklungsstand: V0.1.1-dev**
 
-Die erste Version läuft bereits als echtes **QNAP-QPKG** auf einem TS-431P2 und kann direkt über das QNAP App Center manuell installiert werden.
+V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten unter **„In develop implementiert“** steht, ist bereits im Entwicklungsbranch vorhanden, gilt aber ausdrücklich **noch nicht als stabil veröffentlicht**, solange es nicht praktisch getestet und anschließend nach `main` übernommen wurde.
 
-### Bereits vorhanden
+### ✅ In V0.1.0 tatsächlich bestätigt
 
-- Login
-- moderne Dark-Mode-Weboberfläche
-- Bibliotheken
-- Medien-Scanner
-- Filmsuche
-- Filmübersicht
-- Detailansicht
-- Direct Play
-- HTTP Range Requests
-- Wiedergabefortschritt
-- „Weiterschauen“
-- Systemstatus
-- QNAP-QPKG für ARMHF / ARMv7
-- ARMHF-first Architektur
+- Installation als QNAP-QPKG über das App Center
+- Start auf QNAP TS-431P2 / ARMHF / ARMv7
+- BuddyFlix-Weboberfläche erreichbar
+- Login funktioniert
+- Backend läuft auf Port 8096
+- statisches ARMv7-Binary
+- erste Dark-Mode-Oberfläche
+- grundlegende Server-API vorhanden
+
+### 🧪 In develop implementiert, aber noch nicht als stabil freigegeben
+
+- First-Run-Setup mit eigenem Servernamen, Admin-Benutzer und Passwort
+- persistente Servereinstellungen
+- Admin-Passwort ändern
+- konfigurierbarer Servername
+- Bibliotheken hinzufügen, bearbeiten und entfernen
+- Bibliothekstypen für Filme, Serien und andere Videos
+- Bibliotheksscans
+- erweiterte Verwaltungsoberfläche
+- TMDb-API-Key über die Webverwaltung
+- Medien manuell bearbeiten
+- Medienstatus gesehen / ungesehen
+- Wiedergabefortschritt zurücksetzen
+- Erkennung fehlender Mediendateien
+- Bereinigung verwaister Medieneinträge
+- TMDb-Suche mit auswählbaren Treffern
+- Übernahme eines gezielt ausgewählten TMDb-Treffers
+- Client-/Discovery-Endpunkte für spätere Apps
+- GitHub CI mit Tests sowie AMD64- und ARMHF-Build
+
+**Wichtig:** Diese Liste beschreibt den aktuellen Entwicklungsstand des Codes – nicht automatisch den Stand eines veröffentlichten QPKG.
+
+> **„Erst testen, dann angeben.“** 😄
 
 ---
 
-## 🔑 Standard-Login
+## 🔑 Anmeldung
 
-Für die aktuelle **V0.1.0** gelten bei einer frischen Installation zunächst diese Zugangsdaten:
+### Stabiler Stand V0.1.0
 
 ```text
 Benutzer: admin
@@ -52,7 +76,9 @@ Passwort: buddyflix
 
 > **Bitte das Standardpasswort nicht für einen öffentlich erreichbaren Server verwenden.**
 
-Ein erzwungener Passwortwechsel beim ersten Start ist bereits als sinnvoller nächster Schritt vorgesehen.
+### develop / V0.1.1-dev
+
+Bei einer frischen Installation ist eine **Ersteinrichtung** vorgesehen. Dabei werden Servername, Admin-Benutzer und Passwort selbst vergeben.
 
 ---
 
@@ -91,10 +117,8 @@ Perspektivisch geplant:
 - Serien
 - Staffeln & Episoden
 - automatische Metadaten
-- TMDb-Anbindung
 - Poster & Backdrops
 - Favoriten
-- gesehen / ungesehen
 - Benutzerprofile
 - Sammlungen
 - Untertitel
@@ -131,7 +155,7 @@ Oder anders gesagt:
 
 ## 🖥️ Referenzhardware
 
-Entwicklung und erster Produktivtest:
+Entwicklung und erster bestätigter QNAP-Test:
 
 - **QNAP TS-431P2**
 - AnnapurnaLabs Alpine AL-314
@@ -139,32 +163,26 @@ Entwicklung und erster Produktivtest:
 - ARMv7 / ARMHF
 - 8 GB RAM
 
-BuddyFlix wird so entwickelt, dass dieses Gerät als Mindestniveau gilt.
-
-Wenn es dort flott läuft, läuft es auf neuerer Hardware erst recht.
+BuddyFlix wird so entwickelt, dass dieses Gerät als Referenz für schwächere ARMHF-Hardware dient.
 
 ---
 
 ## 📦 QNAP
 
-Die aktuelle QNAP-Version wird als **.qpkg** bereitgestellt.
+BuddyFlix wird als **.qpkg** für QNAP vorbereitet.
 
-Installation:
+Installation des stabilen Pakets:
 
 1. QTS öffnen
 2. App Center
 3. „Manuell installieren“
 4. BuddyFlix-QPKG auswählen
 5. installieren
-6. BuddyFlix im Browser öffnen
+6. BuddyFlix im Browser auf Port 8096 öffnen
 
-Standard-Port:
+Die V0.1.0-QPKG-Struktur wurde auf einem TS-431P2 erfolgreich installiert und gestartet.
 
-```
-8096
-```
-
-Aktuell ist die erste QPKG-Linie speziell auf ARMHF-/ARMv7-QNAPs ausgelegt.
+**Hinweis zum develop-Branch:** Nicht jeder Commit besitzt automatisch ein installierbares oder getestetes QPKG.
 
 ---
 
@@ -182,18 +200,19 @@ Aktuell:
 
 - Go Backend
 - statisches ARMv7-Binary
-- eingebettete Weboberfläche
+- Weboberfläche
 - lokale Persistenz
 - QNAP-QPKG-Paketierung
-- Direct-Play-orientierter Streaming-Stack
+- Direct-Play-orientierte Architektur
 
-Geplant:
+In Entwicklung:
 
+- Serienstruktur
 - SQLite
 - ffprobe / FFmpeg Integration
-- erweiterte Metadaten-Provider
 - Multiarch-Builds
 - automatisierte Releases
+- Fire-TV-Client
 
 ---
 
@@ -208,6 +227,8 @@ Das bedeutet:
 - keine unnötigen Abhängigkeiten
 - keine riesigen Frameworks, wenn es auch klein geht
 - lieber schlau arbeiten als rohe CPU-Leistung voraussetzen
+- stabile README = nur bestätigte Funktionen
+- develop-README = transparenter Entwicklungsstand mit klarer Kennzeichnung
 
 Oder inoffiziell:
 
@@ -217,24 +238,34 @@ Oder inoffiziell:
 
 ## 📌 Changelog
 
+### V0.1.1-dev
+
+Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
+
+- First-Run-Setup
+- persistente Servereinstellungen
+- ausgebaute Administration
+- Bibliotheksverwaltung
+- TMDb-Konfiguration
+- Medieneditor
+- Medienstatus und Bereinigung
+- auswählbare TMDb-Treffer
+- erste Client-/Discovery-API
+- CI für Tests, AMD64 und ARMHF
+
 ### V0.1.0
 
-Erster lauffähiger BuddyFlix-Stand.
+Erster bestätigter QNAP-Proof-of-Concept.
 
 - ARMHF-/ARMv7-Serverbasis
 - Login
-- Dark-Mode-Webinterface
-- Bibliotheksverwaltung
-- Medien-Scanner
-- Filmsuche
-- Filmansicht
-- Direct Play
-- Range-Streaming
-- Wiedergabefortschritt
-- „Weiterschauen“
-- Systemstatus
-- funktionierendes QNAP-QPKG für TS-431P2
-- QNAP App Center Installation erfolgreich getestet
+- Dark-Mode-Weboberfläche
+- BuddyFlix startet auf einem QNAP TS-431P2
+- Installation über QNAP App Center erfolgreich getestet
+- Port 8096 erreichbar
+- Basis für Scanner, Streaming und Medienverwaltung im Code vorbereitet
+
+**Wichtig:** V0.1.0 ist noch kein fertiger Media Server, sondern der erste lauffähige Grundstein.
 
 ---
 
