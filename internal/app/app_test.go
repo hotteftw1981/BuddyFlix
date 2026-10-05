@@ -193,3 +193,17 @@ func TestScanKeepsMediaWhenLibraryUnavailable(t *testing.T) {
 		t.Fatal("unavailable library must not mark existing media as missing")
 	}
 }
+
+
+func TestLibrariesGetReturnsEmptyArray(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/libraries", nil)
+	rec := httptest.NewRecorder()
+	s.libraries(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("libraries GET failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "[]\n" {
+		t.Fatalf("expected empty JSON array, got %q", got)
+	}
+}
