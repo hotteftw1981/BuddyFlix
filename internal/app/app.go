@@ -44,6 +44,8 @@ type Library struct {
 }
 type Media struct {
 	ID        int64   `json:"id"`
+	MetadataLocked bool `json:"metadata_locked"`
+	Missing    bool    `json:"missing"`
 	LibraryID int64   `json:"library_id"`
 	Path      string  `json:"path"`
 	Title     string  `json:"title"`
