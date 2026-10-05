@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const Version = "0.1.0"
+const Version = "0.1.1-dev"
 
 type Config struct{ ListenAddr, DataDir, AdminUser, AdminPassword, TMDBAPIKey string }
 
@@ -65,6 +65,7 @@ type Progress struct {
 	Updated  string  `json:"updated"`
 }
 type Store struct {
+	ServerID      string             `json:"server_id"`
 	NextLibraryID int64              `json:"next_library_id"`
 	NextMediaID   int64              `json:"next_media_id"`
 	Libraries     []Library          `json:"libraries"`
@@ -99,6 +100,11 @@ func (s *Server) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.st = Store{NextLibraryID: 1, NextMediaID: 1, Progress: map[int64]Progress{}}
+	if s.st.ServerID == "" {
+		raw := make([]byte, 12)
+		_, _ = rand.Read(raw)
+		s.st.ServerID = hex.EncodeToString(raw)
+	}
 	b, err := os.ReadFile(s.dbPath())
 	if os.IsNotExist(err) {
 		return s.saveLocked()
@@ -111,6 +117,12 @@ func (s *Server) load() error {
 	}
 	if s.st.Progress == nil {
 		s.st.Progress = map[int64]Progress{}
+	}
+	if s.st.ServerID == "" {
+		raw := make([]byte, 12)
+		_, _ = rand.Read(raw)
+		s.st.ServerID = hex.EncodeToString(raw)
+		if err := s.saveLocked(); err != nil { return err }
 	}
 	if s.st.NextLibraryID < 1 {
 		s.st.NextLibraryID = 1
@@ -132,6 +144,8 @@ func (s *Server) saveLocked() error {
 	return os.Rename(tmp, s.dbPath())
 }
 func (s *Server) routes() {
+	s.mux.HandleFunc("/api/info", s.info)
+	s.mux.HandleFunc("/api/v1/info", s.info)
 	s.mux.HandleFunc("/api/login", s.login)
 	s.mux.HandleFunc("/api/logout", s.auth(s.logout))
 	s.mux.HandleFunc("/api/health", s.health)
@@ -214,6 +228,23 @@ func (s *Server) auth(n http.HandlerFunc) http.HandlerFunc {
 		}
 		n(w, r)
 	}
+}
+func (s *Server) info(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		jsonErr(w, 405, "method not allowed")
+		return
+	}
+	s.mu.RLock()
+	id := s.st.ServerID
+	s.mu.RUnlock()
+	jsonOut(w, map[string]any{
+		"name": "BuddyFlix",
+		"server_id": id,
+		"version": Version,
+		"api_version": "1",
+		"product": "BuddyFlix Media Server",
+		"features": []string{"direct_play", "range_streaming", "progress", "libraries", "movies"},
+	})
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "version": Version})
