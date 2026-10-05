@@ -67,6 +67,7 @@ jobs:
           mkdir -p "$ROOT/shared"
           sed "s/__VERSION__/$QPKG_VERSION/g" packaging/qnap/qpkg.cfg.in > "$ROOT/qpkg.cfg"
           cp packaging/qnap/package_routines "$ROOT/package_routines"
+          cp -R packaging/qnap/icons "$ROOT/icons"
           cp packaging/qnap/BuddyFlix.sh "$ROOT/shared/BuddyFlix.sh"
           chmod +x "$ROOT/shared/BuddyFlix.sh"
           cp buddyflix-armhf "$ROOT/shared/buddyflix"
