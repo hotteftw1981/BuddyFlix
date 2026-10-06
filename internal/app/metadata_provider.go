@@ -37,6 +37,10 @@ type MetadataProvider interface {
 	EnrichMovie(candidate MetadataCandidate) (MetadataCandidate, error)
 }
 
+type MetadataCandidateRefiner interface {
+	RefineMovieCandidates(candidates []MetadataCandidate) ([]MetadataCandidate, error)
+}
+
 type MetadataProviderStatus struct {
 	Name             string `json:"name"`
 	Configured       bool   `json:"configured"`
@@ -82,6 +86,19 @@ func (e MetadataEngine) SearchMovie(title string, year int) ([]MetadataCandidate
 	}
 	if len(all) == 0 && lastErr != nil { return nil, lastErr }
 	return all, nil
+}
+
+func (e MetadataEngine) RefineMovieCandidates(candidates []MetadataCandidate) ([]MetadataCandidate, error) {
+	if len(candidates) == 0 { return candidates, nil }
+	providerName := candidates[0].Provider
+	for _, p := range e.providers {
+		if p.Name() != providerName { continue }
+		if refiner, ok := p.(MetadataCandidateRefiner); ok {
+			return refiner.RefineMovieCandidates(candidates)
+		}
+		return candidates, nil
+	}
+	return candidates, nil
 }
 
 func (e MetadataEngine) EnrichMovie(candidate MetadataCandidate) (MetadataCandidate, error) {
