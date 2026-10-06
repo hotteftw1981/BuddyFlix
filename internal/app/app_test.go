@@ -512,3 +512,39 @@ func TestTVDBSearchRetriesCleanedTitleWithoutYear(t *testing.T) {
 		t.Fatalf("expected 3 search attempts, got %d: %+v", len(queries), queries)
 	}
 }
+
+
+func TestTVDBSearchPrefersGermanTranslation(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"token":"token"}})
+	})
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data":[]any{map[string]any{
+			"tvdb_id":"77",
+			"name":"The Lives of Others",
+			"year":"2006",
+			"translations":map[string]string{
+				"deu":"Das Leben der Anderen",
+				"eng":"The Lives of Others",
+			},
+		}}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	p := NewTVDBProvider("key")
+	p.baseURL = srv.URL
+	p.client = srv.Client()
+	results, err := p.SearchMovie("Das Leben der Anderen", 2006)
+	if err != nil || len(results) != 1 {
+		t.Fatalf("search failed: %+v %v", results, err)
+	}
+	if results[0].Title != "Das Leben der Anderen" {
+		t.Fatalf("expected German title, got %q", results[0].Title)
+	}
+	_, confidence, auto, ok := chooseMetadataMatch("Das Leben der Anderen", 2006, results)
+	if !ok || !auto || confidence < 95 {
+		t.Fatalf("German translation should auto-match: confidence=%d auto=%v ok=%v result=%+v", confidence, auto, ok, results[0])
+	}
+}
