@@ -26,10 +26,19 @@ var Version = "0.1.1-dev"
 // BuddyFlix project credential at link time. Local overrides still win.
 var BuiltinTMDBAPIKey = ""
 
-type Config struct{ ListenAddr, DataDir, AdminUser, AdminPassword, TMDBAPIKey string }
+var BuiltinTVDBAPIKey = ""
+
+type Config struct{ ListenAddr, DataDir, AdminUser, AdminPassword, TMDBAPIKey, TVDBAPIKey string }
 
 func ConfigFromEnv() Config {
-	return Config{env("BUDDYFLIX_LISTEN", ":8096"), env("BUDDYFLIX_DATA", "./data"), env("BUDDYFLIX_ADMIN_USER", "admin"), env("BUDDYFLIX_ADMIN_PASSWORD", "buddyflix"), os.Getenv("TMDB_API_KEY")}
+	return Config{
+		env("BUDDYFLIX_LISTEN", ":8096"),
+		env("BUDDYFLIX_DATA", "./data"),
+		env("BUDDYFLIX_ADMIN_USER", "admin"),
+		env("BUDDYFLIX_ADMIN_PASSWORD", "buddyflix"),
+		os.Getenv("TMDB_API_KEY"),
+		os.Getenv("TVDB_API_KEY"),
+	}
 }
 func env(k, v string) string {
 	if x := os.Getenv(k); x != "" {
@@ -97,6 +106,7 @@ type Settings struct {
 	AdminUser      string `json:"admin_user"`
 	AdminPassHash  string `json:"admin_pass_hash"`
 	TMDBAPIKey     string `json:"tmdb_api_key,omitempty"`
+	TVDBAPIKey     string `json:"tvdb_api_key,omitempty"`
 }
 
 type Store struct {
@@ -399,13 +409,14 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	serverName := s.st.Settings.ServerName
 	s.mu.RUnlock()
-	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "storage": "embedded-json-v1"})
+	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "tvdb": s.tvdbKey() != "", "storage": "embedded-json-v1"})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		s.mu.RLock()
 		_, tmdbSource := s.tmdbCredentialUnlocked()
+		_, tvdbSource := s.tvdbCredentialUnlocked()
 		out := map[string]any{
 			"server_name": s.st.Settings.ServerName,
 			"admin_user": s.st.Settings.AdminUser,
@@ -416,6 +427,10 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 			"tmdb_credential_source": tmdbSource,
 			"tmdb_builtin": tmdbSource == "builtin",
 			"tmdb_override": strings.TrimSpace(s.st.Settings.TMDBAPIKey) != "",
+			"tvdb_configured": tvdbSource != "missing",
+			"tvdb_credential_source": tvdbSource,
+			"tvdb_builtin": tvdbSource == "builtin",
+			"tvdb_override": strings.TrimSpace(s.st.Settings.TVDBAPIKey) != "",
 		}
 		s.mu.RUnlock()
 		jsonOut(w, out)
@@ -424,6 +439,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 			ServerName string `json:"server_name"`
 			AdminUser  string `json:"admin_user"`
 			TMDBAPIKey *string `json:"tmdb_api_key"`
+			TVDBAPIKey *string `json:"tvdb_api_key"`
 		}
 		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
 			jsonErr(w, 400, "invalid json")
@@ -440,6 +456,9 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		s.st.Settings.AdminUser = x.AdminUser
 		if x.TMDBAPIKey != nil {
 			s.st.Settings.TMDBAPIKey = strings.TrimSpace(*x.TMDBAPIKey)
+		}
+		if x.TVDBAPIKey != nil {
+			s.st.Settings.TVDBAPIKey = strings.TrimSpace(*x.TVDBAPIKey)
 		}
 		e := s.saveLocked()
 		s.mu.Unlock()
@@ -910,9 +929,11 @@ func (s *Server) metadataProviders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" { jsonErr(w, 405, "method not allowed"); return }
 	engine := s.metadataEngine()
 	status := engine.Status()
-	_, source := s.tmdbCredential()
+	_, tmdbSource := s.tmdbCredential()
+	_, tvdbSource := s.tvdbCredential()
 	for i := range status {
-		if status[i].Name == "tmdb" { status[i].CredentialSource = source }
+		if status[i].Name == "tmdb" { status[i].CredentialSource = tmdbSource }
+		if status[i].Name == "thetvdb" { status[i].CredentialSource = tvdbSource }
 	}
 	jsonOut(w, status)
 }
@@ -1200,8 +1221,27 @@ func (s *Server) tmdbKey() string {
 	return key
 }
 
+func (s *Server) tvdbCredentialUnlocked() (string, string) {
+	if key := strings.TrimSpace(s.st.Settings.TVDBAPIKey); key != "" { return key, "override" }
+	if key := strings.TrimSpace(s.cfg.TVDBAPIKey); key != "" { return key, "environment" }
+	if key := strings.TrimSpace(BuiltinTVDBAPIKey); key != "" { return key, "builtin" }
+	return "", "missing"
+}
+
+func (s *Server) tvdbCredential() (string, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tvdbCredentialUnlocked()
+}
+
+func (s *Server) tvdbKey() string {
+	key, _ := s.tvdbCredential()
+	return key
+}
+
 func (s *Server) metadataEngine() MetadataEngine {
-	providers := make([]MetadataProvider, 0, 1)
+	providers := make([]MetadataProvider, 0, 2)
+	if key := s.tvdbKey(); key != "" { providers = append(providers, NewTVDBProvider(key)) }
 	if key := s.tmdbKey(); key != "" { providers = append(providers, NewTMDbProvider(key)) }
 	return NewMetadataEngine(providers...)
 }
