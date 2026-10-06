@@ -246,3 +246,34 @@ func TestMediaGetHidesMissingByDefault(t *testing.T) {
 		t.Fatalf("expected present and missing media, got %+v", all)
 	}
 }
+
+
+func TestMetadataMatchExactTitleAuto(t *testing.T) {
+	results := []TMDbSearchResult{
+		{ID: 7, Title: "Was nicht passt, wird passend gemacht", Year: 2002},
+		{ID: 8, Title: "Was nicht passt", Year: 2003},
+	}
+	got, confidence, auto, ok := chooseMetadataMatch("was nicht passt wird passend gemacht", 2002, results)
+	if !ok || !auto || got.ID != 7 || confidence < 95 {
+		t.Fatalf("expected confident automatic match, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
+	}
+}
+
+func TestMetadataMatchWithoutYearStaysReviewWhenAmbiguous(t *testing.T) {
+	results := []TMDbSearchResult{
+		{ID: 1, Title: "The Thing", Year: 1982},
+		{ID: 2, Title: "The Thing", Year: 2011},
+	}
+	got, confidence, auto, ok := chooseMetadataMatch("The Thing", 0, results)
+	if !ok || auto || got.ID == 0 || confidence < 90 {
+		t.Fatalf("expected ambiguous exact title to require review, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
+	}
+}
+
+func TestMetadataMatchFuzzyNeedsReview(t *testing.T) {
+	results := []TMDbSearchResult{{ID: 3, Title: "Zurück in die Zukunft", Year: 1985}}
+	got, confidence, auto, ok := chooseMetadataMatch("Zuruck in die Zukunft", 1985, results)
+	if !ok || auto || got.ID != 3 || confidence < 55 {
+		t.Fatalf("expected fuzzy candidate for review, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
+	}
+}

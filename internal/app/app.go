@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"mime"
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 var Version = "0.1.1-dev"
@@ -43,28 +45,46 @@ type Library struct {
 	Updated string `json:"updated"`
 }
 type Media struct {
-	ID        int64   `json:"id"`
-	MetadataLocked bool `json:"metadata_locked"`
-	Missing    bool    `json:"missing"`
-	LibraryID int64   `json:"library_id"`
-	Path      string  `json:"path"`
-	Title     string  `json:"title"`
-	Year      int     `json:"year"`
-	Overview  string  `json:"overview"`
-	Poster    string  `json:"poster"`
-	Backdrop  string  `json:"backdrop"`
-	Runtime   int     `json:"runtime"`
-	Added     string  `json:"added"`
-	MTime     int64   `json:"mtime"`
-	Size      int64   `json:"size"`
-	Progress  float64 `json:"progress"`
-	Position  float64 `json:"position"`
-	Duration  float64 `json:"duration"`
+	ID                 int64             `json:"id"`
+	MetadataLocked     bool              `json:"metadata_locked"`
+	MetadataState      string            `json:"metadata_state,omitempty"`
+	MetadataConfidence int               `json:"metadata_confidence,omitempty"`
+	PendingMetadata    *TMDbSearchResult `json:"pending_metadata,omitempty"`
+	Missing            bool              `json:"missing"`
+	LibraryID          int64             `json:"library_id"`
+	Path               string            `json:"path"`
+	Title              string            `json:"title"`
+	Year               int               `json:"year"`
+	Overview           string            `json:"overview"`
+	Poster             string            `json:"poster"`
+	Backdrop           string            `json:"backdrop"`
+	Runtime            int               `json:"runtime"`
+	Added              string            `json:"added"`
+	MTime              int64             `json:"mtime"`
+	Size               int64             `json:"size"`
+	Progress           float64           `json:"progress"`
+	Position           float64           `json:"position"`
+	Duration           float64           `json:"duration"`
 }
 type Progress struct {
 	Position float64 `json:"position"`
 	Duration float64 `json:"duration"`
 	Updated  string  `json:"updated"`
+}
+
+type MetadataJob struct {
+	Running      bool   `json:"running"`
+	Total        int    `json:"total"`
+	Done         int    `json:"done"`
+	AutoMatched  int    `json:"auto_matched"`
+	Review       int    `json:"review"`
+	NoMatch      int    `json:"no_match"`
+	Errors       int    `json:"errors"`
+	Skipped      int    `json:"skipped"`
+	CurrentTitle string `json:"current_title,omitempty"`
+	Started      string `json:"started,omitempty"`
+	Finished     string `json:"finished,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 type Settings struct {
 	SetupDone      bool   `json:"setup_done"`
@@ -93,6 +113,8 @@ type Server struct {
 	sessions    map[string]time.Time
 	scanMu      sync.Mutex
 	scanRunning bool
+	metadataMu  sync.Mutex
+	metadataJob MetadataJob
 }
 
 func New(cfg Config) (*Server, error) {
@@ -193,6 +215,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/progress", s.auth(s.progress))
 	s.mux.HandleFunc("/api/metadata/search", s.auth(s.metadataSearch))
 	s.mux.HandleFunc("/api/metadata/apply", s.auth(s.metadataApply))
+	s.mux.HandleFunc("/api/metadata/bulk", s.auth(s.metadataBulk))
 	s.mux.HandleFunc("/api/metadata/", s.auth(s.metadata))
 	s.mux.HandleFunc("/stream/", s.auth(s.stream))
 	s.mux.HandleFunc("/", s.static)
@@ -754,6 +777,14 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 				s.st.Media[i].Overview = strings.TrimSpace(x.Overview)
 				s.st.Media[i].Poster = strings.TrimSpace(x.Poster)
 				s.st.Media[i].Backdrop = strings.TrimSpace(x.Backdrop)
+				s.st.Media[i].PendingMetadata = nil
+				if s.st.Media[i].Overview != "" || s.st.Media[i].Poster != "" || s.st.Media[i].Backdrop != "" {
+					s.st.Media[i].MetadataState = "manual"
+					s.st.Media[i].MetadataConfidence = 100
+				} else {
+					s.st.Media[i].MetadataState = ""
+					s.st.Media[i].MetadataConfidence = 0
+				}
 				found = true
 				break
 			}
@@ -866,12 +897,18 @@ func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
 	if q == "" { jsonErr(w, 400, "query required"); return }
+	out, err := s.tmdbSearchWithKey(key, q, year)
+	if err != nil { jsonErr(w, 502, err.Error()); return }
+	jsonOut(w, out)
+}
+
+func (s *Server) tmdbSearchWithKey(key, q string, year int) ([]TMDbSearchResult, error) {
 	v := url.Values{"api_key": {key}, "query": {q}, "language": {"de-DE"}}
 	if year > 0 { v.Set("year", strconv.Itoa(year)) }
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Get("https://api.themoviedb.org/3/search/movie?" + v.Encode())
-	if err != nil { jsonErr(w, 502, err.Error()); return }
+	resp, err := (&http.Client{Timeout: 8 * time.Second}).Get("https://api.themoviedb.org/3/search/movie?" + v.Encode())
+	if err != nil { return nil, err }
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 { jsonErr(w, 502, "TMDb request failed"); return }
+	if resp.StatusCode != http.StatusOK { return nil, fmt.Errorf("TMDb request failed (%d)", resp.StatusCode) }
 	var raw struct {
 		Results []struct {
 			ID int64 `json:"id"`
@@ -882,8 +919,8 @@ func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
 			ReleaseDate string `json:"release_date"`
 		} `json:"results"`
 	}
-	if json.NewDecoder(resp.Body).Decode(&raw) != nil { jsonErr(w, 502, "invalid TMDb response"); return }
-	out := make([]TMDbSearchResult, 0)
+	if json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&raw) != nil { return nil, fmt.Errorf("invalid TMDb response") }
+	out := make([]TMDbSearchResult, 0, len(raw.Results))
 	for i, z := range raw.Results {
 		if i >= 12 { break }
 		y := 0
@@ -893,7 +930,222 @@ func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
 		if z.BackdropPath != "" { b = "https://image.tmdb.org/t/p/w780" + z.BackdropPath }
 		out = append(out, TMDbSearchResult{ID:z.ID, Title:z.Title, Overview:z.Overview, Poster:p, Backdrop:b, ReleaseDate:z.ReleaseDate, Year:y})
 	}
-	jsonOut(w, out)
+	return out, nil
+}
+
+func normalizedTitle(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) { b.WriteRune(r) }
+	}
+	return b.String()
+}
+
+func titleSimilarity(a, b string) int {
+	aRunes, bRunes := []rune(normalizedTitle(a)), []rune(normalizedTitle(b))
+	if len(aRunes) == 0 || len(bRunes) == 0 { return 0 }
+	if string(aRunes) == string(bRunes) { return 100 }
+	prev := make([]int, len(bRunes)+1)
+	for j := range prev { prev[j] = j }
+	for i := 1; i <= len(aRunes); i++ {
+		cur := make([]int, len(bRunes)+1)
+		cur[0] = i
+		for j := 1; j <= len(bRunes); j++ {
+			cost := 0
+			if aRunes[i-1] != bRunes[j-1] { cost = 1 }
+			ins, del, sub := cur[j-1]+1, prev[j]+1, prev[j-1]+cost
+			cur[j] = ins
+			if del < cur[j] { cur[j] = del }
+			if sub < cur[j] { cur[j] = sub }
+		}
+		prev = cur
+	}
+	maxLen := len(aRunes)
+	if len(bRunes) > maxLen { maxLen = len(bRunes) }
+	score := 100 - (prev[len(bRunes)] * 100 / maxLen)
+	if score < 0 { return 0 }
+	return score
+}
+
+func chooseMetadataMatch(title string, year int, results []TMDbSearchResult) (TMDbSearchResult, int, bool, bool) {
+	if len(results) == 0 { return TMDbSearchResult{}, 0, false, false }
+	norm := normalizedTitle(title)
+	exactCount := 0
+	for _, r := range results {
+		if normalizedTitle(r.Title) == norm { exactCount++ }
+	}
+	best, bestScore := results[0], -1
+	for _, r := range results {
+		score := titleSimilarity(title, r.Title)
+		exact := normalizedTitle(r.Title) == norm
+		if year > 0 && r.Year > 0 {
+			if year == r.Year { score += 6 } else { score -= 14 }
+		}
+		if !exact && score > 94 { score = 94 }
+		if score > 100 { score = 100 }
+		if score < 0 { score = 0 }
+		if score > bestScore { best, bestScore = r, score }
+	}
+	if bestScore < 55 { return TMDbSearchResult{}, bestScore, false, false }
+	exact := normalizedTitle(best.Title) == norm
+	auto := false
+	if exact {
+		if year > 0 { auto = best.Year == year } else { auto = exactCount == 1 }
+	}
+	return best, bestScore, auto, true
+}
+
+func mediaHasMetadata(m Media) bool {
+	return strings.TrimSpace(m.Overview) != "" || strings.TrimSpace(m.Poster) != "" || strings.TrimSpace(m.Backdrop) != ""
+}
+
+func applyMetadataResult(m *Media, result TMDbSearchResult, state string, confidence int) {
+	if strings.TrimSpace(result.Title) != "" { m.Title = strings.TrimSpace(result.Title) }
+	if result.Year > 0 { m.Year = result.Year }
+	m.Overview = strings.TrimSpace(result.Overview)
+	m.Poster = strings.TrimSpace(result.Poster)
+	m.Backdrop = strings.TrimSpace(result.Backdrop)
+	m.PendingMetadata = nil
+	m.MetadataState = state
+	m.MetadataConfidence = confidence
+}
+
+func (s *Server) metadataJobSnapshot() MetadataJob {
+	s.metadataMu.Lock()
+	defer s.metadataMu.Unlock()
+	return s.metadataJob
+}
+
+func (s *Server) metadataBulk(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		jsonOut(w, s.metadataJobSnapshot())
+		return
+	}
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	key := s.tmdbKey()
+	if key == "" { jsonErr(w, 400, "TMDb API key not configured"); return }
+
+	s.metadataMu.Lock()
+	if s.metadataJob.Running {
+		s.metadataMu.Unlock()
+		jsonErr(w, 409, "metadata scan already running")
+		return
+	}
+	s.mu.RLock()
+	ids := make([]int64, 0)
+	for _, m := range s.st.Media {
+		if m.Missing || m.MetadataLocked || mediaHasMetadata(m) { continue }
+		ids = append(ids, m.ID)
+	}
+	s.mu.RUnlock()
+	s.metadataJob = MetadataJob{Running: len(ids) > 0, Total: len(ids), Started: time.Now().Format(time.RFC3339)}
+	if len(ids) == 0 { s.metadataJob.Finished = time.Now().Format(time.RFC3339) }
+	job := s.metadataJob
+	s.metadataMu.Unlock()
+	if len(ids) > 0 { go s.runMetadataBulk(ids, key) }
+	jsonOut(w, job)
+}
+
+func (s *Server) runMetadataBulk(ids []int64, key string) {
+	consecutiveErrors := 0
+	for n, id := range ids {
+		s.mu.RLock()
+		var item Media
+		found := false
+		for _, m := range s.st.Media {
+			if m.ID == id { item = m; found = true; break }
+		}
+		s.mu.RUnlock()
+		if !found || item.Missing || item.MetadataLocked || mediaHasMetadata(item) {
+			s.metadataMu.Lock()
+			s.metadataJob.Done++
+			s.metadataJob.Skipped++
+			s.metadataMu.Unlock()
+			continue
+		}
+
+		s.metadataMu.Lock()
+		s.metadataJob.CurrentTitle = item.Title
+		s.metadataMu.Unlock()
+
+		results, err := s.tmdbSearchWithKey(key, item.Title, item.Year)
+		if err != nil {
+			consecutiveErrors++
+			s.mu.Lock()
+			for i := range s.st.Media {
+				if s.st.Media[i].ID == id {
+					s.st.Media[i].MetadataState = "error"
+					s.st.Media[i].PendingMetadata = nil
+					s.st.Media[i].MetadataConfidence = 0
+					break
+				}
+			}
+			s.mu.Unlock()
+			s.metadataMu.Lock()
+			s.metadataJob.Done++
+			s.metadataJob.Errors++
+			s.metadataMu.Unlock()
+			if consecutiveErrors >= 5 {
+				s.metadataMu.Lock()
+				s.metadataJob.Error = "TMDb ist momentan nicht zuverlässig erreichbar. Lauf wurde nach mehreren Fehlern gestoppt."
+				s.metadataMu.Unlock()
+				break
+			}
+			time.Sleep(650 * time.Millisecond)
+			continue
+		}
+		consecutiveErrors = 0
+
+		candidate, confidence, auto, hasCandidate := chooseMetadataMatch(item.Title, item.Year, results)
+		resultKind := "no_match"
+		s.mu.Lock()
+		for i := range s.st.Media {
+			m := &s.st.Media[i]
+			if m.ID != id { continue }
+			if m.Missing || m.MetadataLocked || mediaHasMetadata(*m) {
+				resultKind = "skipped"
+				break
+			}
+			if auto {
+				applyMetadataResult(m, candidate, "auto", confidence)
+				resultKind = "auto"
+			} else if hasCandidate {
+				copyCandidate := candidate
+				m.PendingMetadata = &copyCandidate
+				m.MetadataState = "review"
+				m.MetadataConfidence = confidence
+				resultKind = "review"
+			} else {
+				m.PendingMetadata = nil
+				m.MetadataState = "no_match"
+				m.MetadataConfidence = 0
+			}
+			break
+		}
+		if n%10 == 9 { _ = s.saveLocked() }
+		s.mu.Unlock()
+
+		s.metadataMu.Lock()
+		s.metadataJob.Done++
+		switch resultKind {
+		case "auto": s.metadataJob.AutoMatched++
+		case "review": s.metadataJob.Review++
+		case "no_match": s.metadataJob.NoMatch++
+		case "skipped": s.metadataJob.Skipped++
+		}
+		s.metadataMu.Unlock()
+		time.Sleep(220 * time.Millisecond)
+	}
+
+	s.mu.Lock()
+	_ = s.saveLocked()
+	s.mu.Unlock()
+	s.metadataMu.Lock()
+	s.metadataJob.Running = false
+	s.metadataJob.CurrentTitle = ""
+	s.metadataJob.Finished = time.Now().Format(time.RFC3339)
+	s.metadataMu.Unlock()
 }
 
 func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
@@ -914,11 +1166,7 @@ func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
 	found := false
 	for i := range s.st.Media {
 		if s.st.Media[i].ID != x.MediaID { continue }
-		s.st.Media[i].Title = strings.TrimSpace(x.Result.Title)
-		s.st.Media[i].Year = x.Result.Year
-		s.st.Media[i].Overview = strings.TrimSpace(x.Result.Overview)
-		s.st.Media[i].Poster = strings.TrimSpace(x.Result.Poster)
-		s.st.Media[i].Backdrop = strings.TrimSpace(x.Result.Backdrop)
+		applyMetadataResult(&s.st.Media[i], x.Result, "matched", 100)
 		found = true
 		break
 	}

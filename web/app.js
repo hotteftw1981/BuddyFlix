@@ -1,4 +1,4 @@
-const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};
+const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null;
 async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});if(r.status===401){loginView();throw new Error('unauthorized')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Fehler');return j}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function toast(t){let x=document.createElement('div');x.className='toast';x.textContent=t;document.body.append(x);setTimeout(()=>x.remove(),2500)}
@@ -17,7 +17,9 @@ async function renderAdmin(){
   state.libs=await api('/api/libraries');
   state.media=await api('/api/media?include_missing=1');
   state.settings=await api('/api/settings');
+  state.metadataJob=await api('/api/metadata/bulk');
   let s=state.system, cfg=state.settings;
+  let reviewCount=state.media.filter(m=>m.metadata_state==='review'&&m.pending_metadata).length;
   $('#content').innerHTML=`
   <div class="rowhead"><div><h2>Verwaltung</h2><div class="muted">Server, Bibliotheken und Zugriff verwalten</div></div><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div>
   <div class="stats">
@@ -79,6 +81,11 @@ async function renderAdmin(){
         <div class="toolbar"><button class="btn primary">Speichern</button>${cfg.tmdb_configured?'<button type="button" class="btn danger" id="cleartmdb">API-Key entfernen</button>':''}</div>
       </form>
       <p class="muted">Wird lokal in deiner BuddyFlix-Konfiguration gespeichert und nicht im Repository.</p>
+      <div class="metadata-auto">
+        <div class="metadata-auto-head"><div><strong>Automatische Erkennung</strong><div class="muted">Nur Medien ohne vorhandene Metadaten. Eindeutige Treffer werden übernommen, unsichere landen bei „Bitte prüfen“.</div></div><span class="badge ${reviewCount?'warn':'ok'}">${reviewCount} zu prüfen</span></div>
+        <div class="toolbar"><button type="button" class="btn primary" id="bulkmeta" ${cfg.tmdb_configured?'':'disabled'}>Metadaten automatisch laden</button><button type="button" class="btn ghost" id="filterreview">Bitte prüfen (${reviewCount})</button></div>
+        <div class="metadata-job" id="metajob">${metadataJobMarkup(state.metadataJob)}</div>
+      </div>
     </section>
 
     <section class="panel">
@@ -101,10 +108,65 @@ async function renderAdmin(){
   const clear=$('#cleartmdb'); if(clear) clear.onclick=clearTMDb;
   $('#filtermeta').onclick=()=>renderAdminMedia('metadata');
   $('#filtermissing').onclick=()=>renderAdminMedia('missing');
+  $('#filterreview').onclick=()=>renderAdminMedia('review');
+  $('#bulkmeta').onclick=startBulkMetadata;
   $('#cleanupmissing').onclick=cleanupMissing;
+  if(state.metadataJob?.running) scheduleMetadataPoll();
 }
-function adminMediaRows(items){if(!items.length)return '<div class="empty">Keine Medien vorhanden.</div>';return items.map(m=>`<div class="media-admin-row ${m.missing?'is-missing':''}"><div class="media-admin-poster">${m.poster?`<img src="${esc(m.poster)}">`:'▶'}</div><div class="media-admin-main"><strong>${esc(m.title)}</strong><div class="muted">${m.year||'ohne Jahr'} · ${m.overview?'Metadaten vorhanden':'ohne Metadaten'}${m.missing?' · Datei fehlt':''}</div><div class="pathline">${esc(m.path)}</div></div><div class="toolbar"><button class="btn ghost" onclick="identifyMediaById(${m.id})">Identifizieren</button><button class="btn ghost" onclick="editMediaById(${m.id})">Bearbeiten</button><button class="btn ghost" onclick="mediaAction(${m.id},'${m.progress>=95?'mark_unwatched':'mark_watched'}')">${m.progress>=95?'Ungesehen':'Gesehen'}</button><button class="btn ghost" onclick="mediaAction(${m.id},'reset_progress')">Fortschritt 0</button></div></div>`).join('')}
-function renderAdminMedia(mode='all'){let items=state.media;if(mode==='metadata')items=items.filter(m=>!m.poster||!m.overview);if(mode==='missing')items=items.filter(m=>m.missing);$('#medialist').innerHTML=adminMediaRows(items)}
+function adminMediaRows(items){
+  if(!items.length)return '<div class="empty">Keine Medien vorhanden.</div>';
+  return items.map(m=>{
+    let suggestion=m.pending_metadata;
+    let suggested=suggestion?`<div class="metadata-suggestion"><span class="badge warn">Bitte prüfen · ${m.metadata_confidence||0}%</span><strong>${esc(suggestion.title)}</strong><span class="muted">${suggestion.year||'ohne Jahr'}</span></div>`:'';
+    return `<div class="media-admin-row ${m.missing?'is-missing':''} ${suggestion?'has-suggestion':''}"><div class="media-admin-poster">${m.poster?`<img src="${esc(m.poster)}">`:'▶'}</div><div class="media-admin-main"><strong>${esc(m.title)}</strong><div class="muted">${m.year||'ohne Jahr'} · ${m.overview?'Metadaten vorhanden':'ohne Metadaten'}${m.missing?' · Datei fehlt':''}</div>${suggested}<div class="pathline">${esc(m.path)}</div></div><div class="toolbar">${suggestion?`<button class="btn primary" onclick="applyPendingMetadata(${m.id})">Vorschlag übernehmen</button>`:''}<button class="btn ghost" onclick="identifyMediaById(${m.id})">Identifizieren</button><button class="btn ghost" onclick="editMediaById(${m.id})">Bearbeiten</button><button class="btn ghost" onclick="mediaAction(${m.id},'${m.progress>=95?'mark_unwatched':'mark_watched'}')">${m.progress>=95?'Ungesehen':'Gesehen'}</button><button class="btn ghost" onclick="mediaAction(${m.id},'reset_progress')">Fortschritt 0</button></div></div>`;
+  }).join('')
+}
+function renderAdminMedia(mode='all'){
+  let items=state.media;
+  if(mode==='metadata')items=items.filter(m=>!m.poster||!m.overview);
+  if(mode==='missing')items=items.filter(m=>m.missing);
+  if(mode==='review')items=items.filter(m=>m.metadata_state==='review'&&m.pending_metadata);
+  $('#medialist').innerHTML=adminMediaRows(items)
+}
+async function applyPendingMetadata(id){
+  let m=state.media.find(x=>x.id===id);
+  if(!m?.pending_metadata){toast('Kein Vorschlag vorhanden');return}
+  try{
+    await api('/api/metadata/apply',{method:'POST',body:JSON.stringify({media_id:id,result:m.pending_metadata})});
+    toast('Metadaten übernommen');
+    await renderAdmin()
+  }catch(x){toast(x.message)}
+}
+function metadataJobMarkup(job={}){
+  if(!job.started)return '<div class="muted">Noch kein automatischer Metadatenlauf gestartet.</div>';
+  let total=Number(job.total)||0,done=Number(job.done)||0,pct=total?Math.min(100,Math.round(done/total*100)):100;
+  let summary=`${job.auto_matched||0} automatisch · ${job.review||0} prüfen · ${job.no_match||0} ohne Treffer${job.errors?` · ${job.errors} Fehler`:''}`;
+  if(job.running)return `<div class="metadata-job-head"><strong>${done} / ${total}</strong><span>${esc(job.current_title||'TMDb wird durchsucht…')}</span></div><div class="metadata-job-bar"><i style="width:${pct}%"></i></div><div class="muted">${summary}</div>`;
+  return `<div class="metadata-job-head"><strong>Letzter Lauf beendet</strong><span>${summary}</span></div>${job.error?`<div class="metadata-job-error">${esc(job.error)}</div>`:''}`
+}
+async function startBulkMetadata(){
+  let b=$('#bulkmeta');if(!b)return;
+  b.disabled=true;b.textContent='Metadatenlauf startet…';
+  try{
+    state.metadataJob=await api('/api/metadata/bulk',{method:'POST'});
+    let box=$('#metajob');if(box)box.innerHTML=metadataJobMarkup(state.metadataJob);
+    if(state.metadataJob.running){toast(`${state.metadataJob.total} Titel werden geprüft`);scheduleMetadataPoll()}
+    else{toast('Keine Medien ohne Metadaten gefunden');b.disabled=false;b.textContent='Metadaten automatisch laden'}
+  }catch(x){toast(x.message);b.disabled=false;b.textContent='Metadaten automatisch laden'}
+}
+function scheduleMetadataPoll(){
+  clearTimeout(metadataPollTimer);
+  metadataPollTimer=setTimeout(pollMetadataJob,1000)
+}
+async function pollMetadataJob(){
+  try{
+    let job=await api('/api/metadata/bulk');state.metadataJob=job;
+    let box=$('#metajob');if(box)box.innerHTML=metadataJobMarkup(job);
+    if(job.running){scheduleMetadataPoll();return}
+    await refresh();
+    if(box){toast(`Metadaten fertig: ${job.auto_matched||0} automatisch, ${job.review||0} zu prüfen`);await renderAdmin()}
+  }catch(x){let box=$('#metajob');if(box)box.innerHTML='<div class="metadata-job-error">'+esc(x.message)+'</div>'}
+}
 async function mediaAction(id,action){try{await api('/api/media/action',{method:'POST',body:JSON.stringify({media_id:id,action})});await refresh();renderAdminMedia();toast('Medienstatus aktualisiert')}catch(x){toast(x.message)}}
 async function cleanupMissing(){if(!confirm('Alle Einträge entfernen, deren Mediendatei beim letzten Scan nicht mehr gefunden wurde? Die Dateien selbst werden nicht gelöscht.'))return;try{let r=await api('/api/media/cleanup',{method:'POST'});toast(r.removed+' verwaiste Einträge entfernt');await refresh();renderAdmin()}catch(x){toast(x.message)}}
 async function editMediaById(id){let a=await api('/api/media?id='+id+'&include_missing=1');if(a[0])editMedia(a[0])}

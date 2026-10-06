@@ -59,6 +59,8 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - Bereinigung verwaister Medieneinträge
 - TMDb-Suche mit auswählbaren Treffern
 - Übernahme eines gezielt ausgewählten TMDb-Treffers
+- automatische TMDb-Metadatenerkennung für komplette Bibliotheken
+- konservative Auto-Zuordnung eindeutiger Treffer; unsichere Treffer landen in „Bitte prüfen“
 - Client-/Discovery-Endpunkte für spätere Apps
 - dynamische Versionsanzeige im Frontend
 - eindeutige Dev-Buildnummern für QNAP-Testpakete
@@ -124,8 +126,6 @@ Perspektivisch geplant:
 
 - Serien
 - Staffeln & Episoden
-- automatische Metadaten
-- Poster & Backdrops
 - Favoriten
 - Benutzerprofile
 - Sammlungen
@@ -266,6 +266,7 @@ Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
 - Medieneditor
 - Medienstatus und Bereinigung
 - auswählbare TMDb-Treffer
+- automatische TMDb-Metadatenläufe mit Prüfliste für unsichere Treffer
 - erste Client-/Discovery-API
 - CI für Go-Tests, JavaScript-Syntaxcheck, AMD64 und ARMHF
 
