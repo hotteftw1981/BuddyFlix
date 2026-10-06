@@ -6,12 +6,10 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/fs"
 	"mime"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -20,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 )
 
 var Version = "0.1.1-dev"
@@ -45,11 +42,15 @@ type Library struct {
 	Updated string `json:"updated"`
 }
 type Media struct {
-	ID                 int64             `json:"id"`
-	MetadataLocked     bool              `json:"metadata_locked"`
-	MetadataState      string            `json:"metadata_state,omitempty"`
-	MetadataConfidence int               `json:"metadata_confidence,omitempty"`
-	PendingMetadata    *TMDbSearchResult `json:"pending_metadata,omitempty"`
+	ID                 int64              `json:"id"`
+	MetadataLocked     bool               `json:"metadata_locked"`
+	MetadataState      string             `json:"metadata_state,omitempty"`
+	MetadataConfidence int                `json:"metadata_confidence,omitempty"`
+	PendingMetadata    *MetadataCandidate `json:"pending_metadata,omitempty"`
+	MetadataProvider   string             `json:"metadata_provider,omitempty"`
+	ExternalIDs        map[string]string  `json:"external_ids,omitempty"`
+	MetadataSources    map[string]string  `json:"metadata_sources,omitempty"`
+	MetadataUpdated    string             `json:"metadata_updated,omitempty"`
 	Missing            bool              `json:"missing"`
 	LibraryID          int64             `json:"library_id"`
 	Path               string            `json:"path"`
@@ -216,6 +217,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/metadata/search", s.auth(s.metadataSearch))
 	s.mux.HandleFunc("/api/metadata/apply", s.auth(s.metadataApply))
 	s.mux.HandleFunc("/api/metadata/bulk", s.auth(s.metadataBulk))
+	s.mux.HandleFunc("/api/metadata/providers", s.auth(s.metadataProviders))
 	s.mux.HandleFunc("/api/metadata/", s.auth(s.metadata))
 	s.mux.HandleFunc("/stream/", s.auth(s.stream))
 	s.mux.HandleFunc("/", s.static)
@@ -410,7 +412,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 			"server_id": s.st.ServerID,
 			"data_dir": s.cfg.DataDir,
 			"listen": s.cfg.ListenAddr,
-			"tmdb_configured": s.st.Settings.TMDBAPIKey != "",
+			"tmdb_configured": s.tmdbKeyUnlocked() != "",
 		}
 		s.mu.RUnlock()
 		jsonOut(w, out)
@@ -781,9 +783,18 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 				if s.st.Media[i].Overview != "" || s.st.Media[i].Poster != "" || s.st.Media[i].Backdrop != "" {
 					s.st.Media[i].MetadataState = "manual"
 					s.st.Media[i].MetadataConfidence = 100
+					s.st.Media[i].MetadataProvider = "manual"
+					s.st.Media[i].MetadataUpdated = time.Now().Format(time.RFC3339)
+					if s.st.Media[i].MetadataSources == nil { s.st.Media[i].MetadataSources = map[string]string{} }
+					s.st.Media[i].MetadataSources["title"] = "manual"
+					s.st.Media[i].MetadataSources["year"] = "manual"
+					s.st.Media[i].MetadataSources["overview"] = "manual"
+					s.st.Media[i].MetadataSources["poster"] = "manual"
+					s.st.Media[i].MetadataSources["backdrop"] = "manual"
 				} else {
 					s.st.Media[i].MetadataState = ""
 					s.st.Media[i].MetadataConfidence = 0
+					s.st.Media[i].MetadataProvider = ""
 				}
 				found = true
 				break
@@ -880,127 +891,29 @@ func (s *Server) mediaCleanup(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]any{"ok": true, "removed": removed})
 }
 
-type TMDbSearchResult struct {
-	ID int64 `json:"id"`
-	Title string `json:"title"`
-	Overview string `json:"overview"`
-	Poster string `json:"poster"`
-	Backdrop string `json:"backdrop"`
-	ReleaseDate string `json:"release_date"`
-	Year int `json:"year"`
-}
-
 func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" { jsonErr(w, 405, "method not allowed"); return }
-	key := s.tmdbKey()
-	if key == "" { jsonErr(w, 400, "TMDb API key not configured"); return }
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
 	if q == "" { jsonErr(w, 400, "query required"); return }
-	out, err := s.tmdbSearchWithKey(key, q, year)
+	engine := s.metadataEngine()
+	if !engine.Available() { jsonErr(w, 400, "no metadata provider configured"); return }
+	out, err := engine.SearchMovie(q, year)
 	if err != nil { jsonErr(w, 502, err.Error()); return }
 	jsonOut(w, out)
 }
 
-func (s *Server) tmdbSearchWithKey(key, q string, year int) ([]TMDbSearchResult, error) {
-	v := url.Values{"api_key": {key}, "query": {q}, "language": {"de-DE"}}
-	if year > 0 { v.Set("year", strconv.Itoa(year)) }
-	resp, err := (&http.Client{Timeout: 8 * time.Second}).Get("https://api.themoviedb.org/3/search/movie?" + v.Encode())
-	if err != nil { return nil, err }
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK { return nil, fmt.Errorf("TMDb request failed (%d)", resp.StatusCode) }
-	var raw struct {
-		Results []struct {
-			ID int64 `json:"id"`
-			Title string `json:"title"`
-			Overview string `json:"overview"`
-			PosterPath string `json:"poster_path"`
-			BackdropPath string `json:"backdrop_path"`
-			ReleaseDate string `json:"release_date"`
-		} `json:"results"`
-	}
-	if json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&raw) != nil { return nil, fmt.Errorf("invalid TMDb response") }
-	out := make([]TMDbSearchResult, 0, len(raw.Results))
-	for i, z := range raw.Results {
-		if i >= 12 { break }
-		y := 0
-		if len(z.ReleaseDate) >= 4 { y, _ = strconv.Atoi(z.ReleaseDate[:4]) }
-		p, b := "", ""
-		if z.PosterPath != "" { p = "https://image.tmdb.org/t/p/w342" + z.PosterPath }
-		if z.BackdropPath != "" { b = "https://image.tmdb.org/t/p/w780" + z.BackdropPath }
-		out = append(out, TMDbSearchResult{ID:z.ID, Title:z.Title, Overview:z.Overview, Poster:p, Backdrop:b, ReleaseDate:z.ReleaseDate, Year:y})
-	}
-	return out, nil
-}
-
-func normalizedTitle(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) { b.WriteRune(r) }
-	}
-	return b.String()
-}
-
-func titleSimilarity(a, b string) int {
-	aRunes, bRunes := []rune(normalizedTitle(a)), []rune(normalizedTitle(b))
-	if len(aRunes) == 0 || len(bRunes) == 0 { return 0 }
-	if string(aRunes) == string(bRunes) { return 100 }
-	prev := make([]int, len(bRunes)+1)
-	for j := range prev { prev[j] = j }
-	for i := 1; i <= len(aRunes); i++ {
-		cur := make([]int, len(bRunes)+1)
-		cur[0] = i
-		for j := 1; j <= len(bRunes); j++ {
-			cost := 0
-			if aRunes[i-1] != bRunes[j-1] { cost = 1 }
-			ins, del, sub := cur[j-1]+1, prev[j]+1, prev[j-1]+cost
-			cur[j] = ins
-			if del < cur[j] { cur[j] = del }
-			if sub < cur[j] { cur[j] = sub }
-		}
-		prev = cur
-	}
-	maxLen := len(aRunes)
-	if len(bRunes) > maxLen { maxLen = len(bRunes) }
-	score := 100 - (prev[len(bRunes)] * 100 / maxLen)
-	if score < 0 { return 0 }
-	return score
-}
-
-func chooseMetadataMatch(title string, year int, results []TMDbSearchResult) (TMDbSearchResult, int, bool, bool) {
-	if len(results) == 0 { return TMDbSearchResult{}, 0, false, false }
-	norm := normalizedTitle(title)
-	exactCount := 0
-	for _, r := range results {
-		if normalizedTitle(r.Title) == norm { exactCount++ }
-	}
-	best, bestScore := results[0], -1
-	for _, r := range results {
-		score := titleSimilarity(title, r.Title)
-		exact := normalizedTitle(r.Title) == norm
-		if year > 0 && r.Year > 0 {
-			if year == r.Year { score += 6 } else { score -= 14 }
-		}
-		if !exact && score > 94 { score = 94 }
-		if score > 100 { score = 100 }
-		if score < 0 { score = 0 }
-		if score > bestScore { best, bestScore = r, score }
-	}
-	if bestScore < 55 { return TMDbSearchResult{}, bestScore, false, false }
-	exact := normalizedTitle(best.Title) == norm
-	auto := false
-	if exact {
-		if year > 0 { auto = best.Year == year } else { auto = exactCount == 1 }
-	}
-	return best, bestScore, auto, true
+func (s *Server) metadataProviders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" { jsonErr(w, 405, "method not allowed"); return }
+	engine := s.metadataEngine()
+	jsonOut(w, engine.Status())
 }
 
 func mediaHasMetadata(m Media) bool {
 	return strings.TrimSpace(m.Overview) != "" || strings.TrimSpace(m.Poster) != "" || strings.TrimSpace(m.Backdrop) != ""
 }
 
-func applyMetadataResult(m *Media, result TMDbSearchResult, state string, confidence int) {
+func applyMetadataResult(m *Media, result MetadataCandidate, state string, confidence int) {
 	if strings.TrimSpace(result.Title) != "" { m.Title = strings.TrimSpace(result.Title) }
 	if result.Year > 0 { m.Year = result.Year }
 	m.Overview = strings.TrimSpace(result.Overview)
@@ -1009,6 +922,18 @@ func applyMetadataResult(m *Media, result TMDbSearchResult, state string, confid
 	m.PendingMetadata = nil
 	m.MetadataState = state
 	m.MetadataConfidence = confidence
+	m.MetadataProvider = result.Provider
+	m.MetadataUpdated = time.Now().Format(time.RFC3339)
+	if len(result.ExternalIDs) > 0 {
+		if m.ExternalIDs == nil { m.ExternalIDs = map[string]string{} }
+		for k, v := range result.ExternalIDs {
+			if strings.TrimSpace(v) != "" { m.ExternalIDs[k] = strings.TrimSpace(v) }
+		}
+	}
+	if m.MetadataSources == nil { m.MetadataSources = map[string]string{} }
+	source := result.Provider
+	if source == "" { source = "unknown" }
+	for _, field := range []string{"title","year","overview","poster","backdrop"} { m.MetadataSources[field] = source }
 }
 
 func (s *Server) metadataJobSnapshot() MetadataJob {
@@ -1023,8 +948,8 @@ func (s *Server) metadataBulk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
-	key := s.tmdbKey()
-	if key == "" { jsonErr(w, 400, "TMDb API key not configured"); return }
+	engine := s.metadataEngine()
+	if !engine.Available() { jsonErr(w, 400, "no metadata provider configured"); return }
 
 	s.metadataMu.Lock()
 	if s.metadataJob.Running {
@@ -1043,11 +968,11 @@ func (s *Server) metadataBulk(w http.ResponseWriter, r *http.Request) {
 	if len(ids) == 0 { s.metadataJob.Finished = time.Now().Format(time.RFC3339) }
 	job := s.metadataJob
 	s.metadataMu.Unlock()
-	if len(ids) > 0 { go s.runMetadataBulk(ids, key) }
+	if len(ids) > 0 { go s.runMetadataBulk(ids, engine) }
 	jsonOut(w, job)
 }
 
-func (s *Server) runMetadataBulk(ids []int64, key string) {
+func (s *Server) runMetadataBulk(ids []int64, engine MetadataEngine) {
 	consecutiveErrors := 0
 	for n, id := range ids {
 		s.mu.RLock()
@@ -1069,7 +994,7 @@ func (s *Server) runMetadataBulk(ids []int64, key string) {
 		s.metadataJob.CurrentTitle = item.Title
 		s.metadataMu.Unlock()
 
-		results, err := s.tmdbSearchWithKey(key, item.Title, item.Year)
+		results, err := engine.SearchMovie(item.Title, item.Year)
 		if err != nil {
 			consecutiveErrors++
 			s.mu.Lock()
@@ -1088,7 +1013,7 @@ func (s *Server) runMetadataBulk(ids []int64, key string) {
 			s.metadataMu.Unlock()
 			if consecutiveErrors >= 5 {
 				s.metadataMu.Lock()
-				s.metadataJob.Error = "TMDb ist momentan nicht zuverlässig erreichbar. Lauf wurde nach mehreren Fehlern gestoppt."
+				s.metadataJob.Error = "Metadatenanbieter sind momentan nicht zuverlässig erreichbar. Lauf wurde nach mehreren Fehlern gestoppt."
 				s.metadataMu.Unlock()
 				break
 			}
@@ -1099,6 +1024,9 @@ func (s *Server) runMetadataBulk(ids []int64, key string) {
 
 		candidate, confidence, auto, hasCandidate := chooseMetadataMatch(item.Title, item.Year, results)
 		resultKind := "no_match"
+		if auto {
+			if enriched, enrichErr := engine.EnrichMovie(candidate); enrichErr == nil { candidate = enriched }
+		}
 		s.mu.Lock()
 		for i := range s.st.Media {
 			m := &s.st.Media[i]
@@ -1152,7 +1080,7 @@ func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
 	var x struct {
 		MediaID int64 `json:"media_id"`
-		Result TMDbSearchResult `json:"result"`
+		Result MetadataCandidate `json:"result"`
 	}
 	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil || x.MediaID < 1 {
 		jsonErr(w, 400, "invalid json")
@@ -1162,6 +1090,8 @@ func (s *Server) metadataApply(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "result title required")
 		return
 	}
+	engine := s.metadataEngine()
+	if enriched, err := engine.EnrichMovie(x.Result); err == nil { x.Result = enriched }
 	s.mu.Lock()
 	found := false
 	for i := range s.st.Media {
@@ -1239,101 +1169,55 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Ranges", "bytes")
 	http.ServeContent(w, r, filepath.Base(p), st.ModTime(), f)
 }
-func (s *Server) tmdbKey() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.st.Settings.TMDBAPIKey != "" {
-		return s.st.Settings.TMDBAPIKey
-	}
+func (s *Server) tmdbKeyUnlocked() string {
+	if s.st.Settings.TMDBAPIKey != "" { return s.st.Settings.TMDBAPIKey }
 	return s.cfg.TMDBAPIKey
 }
 
+func (s *Server) tmdbKey() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tmdbKeyUnlocked()
+}
+
+func (s *Server) metadataEngine() MetadataEngine {
+	providers := make([]MetadataProvider, 0, 1)
+	if key := s.tmdbKey(); key != "" { providers = append(providers, NewTMDbProvider(key)) }
+	return NewMetadataEngine(providers...)
+}
+
+// Legacy one-click metadata endpoint kept for older clients. It now uses the provider engine.
 func (s *Server) metadata(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		jsonErr(w, 405, "method not allowed")
-		return
-	}
-	key := s.tmdbKey()
-	if key == "" {
-		jsonErr(w, 400, "TMDb API key not configured")
-		return
-	}
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
 	id, _ := strconv.ParseInt(strings.TrimPrefix(r.URL.Path, "/api/metadata/"), 10, 64)
 	s.mu.RLock()
 	var cur Media
 	ok := false
 	for _, m := range s.st.Media {
-		if m.ID == id {
-			cur = m
-			ok = true
-			break
-		}
+		if m.ID == id { cur = m; ok = true; break }
 	}
 	s.mu.RUnlock()
-	if !ok {
-		jsonErr(w, 404, "not found")
-		return
-	}
-	v := url.Values{"api_key": {key}, "query": {cur.Title}, "language": {"de-DE"}}
-	if cur.Year > 0 {
-		v.Set("year", strconv.Itoa(cur.Year))
-	}
-	req, _ := http.NewRequest("GET", "https://api.themoviedb.org/3/search/movie?"+v.Encode(), nil)
-	resp, e := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if e != nil {
-		jsonErr(w, 502, e.Error())
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		jsonErr(w, 502, "TMDb request failed")
-		return
-	}
-	var raw struct {
-		Results []struct {
-			Title        string `json:"title"`
-			Overview     string `json:"overview"`
-			PosterPath   string `json:"poster_path"`
-			BackdropPath string `json:"backdrop_path"`
-			ReleaseDate  string `json:"release_date"`
-		} `json:"results"`
-	}
-	if json.NewDecoder(resp.Body).Decode(&raw) != nil || len(raw.Results) == 0 {
-		jsonErr(w, 404, "no match")
-		return
-	}
-	z := raw.Results[0]
-	y := cur.Year
-	if len(z.ReleaseDate) >= 4 {
-		if yy, e := strconv.Atoi(z.ReleaseDate[:4]); e == nil {
-			y = yy
-		}
-	}
-	poster, back := "", ""
-	if z.PosterPath != "" {
-		poster = "https://image.tmdb.org/t/p/w500" + z.PosterPath
-	}
-	if z.BackdropPath != "" {
-		back = "https://image.tmdb.org/t/p/w1280" + z.BackdropPath
-	}
+	if !ok { jsonErr(w, 404, "not found"); return }
+	engine := s.metadataEngine()
+	if !engine.Available() { jsonErr(w, 400, "no metadata provider configured"); return }
+	results, err := engine.SearchMovie(cur.Title, cur.Year)
+	if err != nil { jsonErr(w, 502, err.Error()); return }
+	candidate, confidence, _, hasCandidate := chooseMetadataMatch(cur.Title, cur.Year, results)
+	if !hasCandidate { jsonErr(w, 404, "no match"); return }
+	if enriched, enrichErr := engine.EnrichMovie(candidate); enrichErr == nil { candidate = enriched }
 	s.mu.Lock()
 	for i := range s.st.Media {
 		if s.st.Media[i].ID == id {
-			s.st.Media[i].Title = z.Title
-			s.st.Media[i].Year = y
-			s.st.Media[i].Overview = z.Overview
-			s.st.Media[i].Poster = poster
-			s.st.Media[i].Backdrop = back
+			applyMetadataResult(&s.st.Media[i], candidate, "matched", confidence)
+			break
 		}
 	}
-	e = s.saveLocked()
+	err = s.saveLocked()
 	s.mu.Unlock()
-	if e != nil {
-		jsonErr(w, 500, e.Error())
-		return
-	}
+	if err != nil { jsonErr(w, 500, err.Error()); return }
 	jsonOut(w, map[string]bool{"ok": true})
 }
+
 func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(filepath.Clean(r.URL.Path), "/")
 	if p == "." || p == "" {

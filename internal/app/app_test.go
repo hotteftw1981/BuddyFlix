@@ -277,3 +277,43 @@ func TestMetadataMatchFuzzyNeedsReview(t *testing.T) {
 		t.Fatalf("expected fuzzy candidate for review, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
 	}
 }
+
+
+type fakeMetadataProvider struct{}
+
+func (fakeMetadataProvider) Name() string { return "fake" }
+func (fakeMetadataProvider) SearchMovie(title string, year int) ([]MetadataCandidate, error) {
+	return []MetadataCandidate{{Provider:"fake", ProviderID:"42", Title:title, Year:year, ExternalIDs:map[string]string{"fake":"42"}}}, nil
+}
+func (fakeMetadataProvider) EnrichMovie(c MetadataCandidate) (MetadataCandidate, error) {
+	if c.ExternalIDs == nil { c.ExternalIDs = map[string]string{} }
+	c.ExternalIDs["imdb"] = "tt0042"
+	c.Overview = "Provider-neutral metadata"
+	return c, nil
+}
+
+func TestMetadataEngineUsesProvider(t *testing.T) {
+	engine := NewMetadataEngine(fakeMetadataProvider{})
+	if !engine.Available() { t.Fatal("engine should be available") }
+	results, err := engine.SearchMovie("Testfilm", 2026)
+	if err != nil || len(results) != 1 { t.Fatalf("unexpected search result: %+v err=%v", results, err) }
+	if results[0].Provider != "fake" || results[0].ProviderID != "42" { t.Fatalf("provider identity lost: %+v", results[0]) }
+	enriched, err := engine.EnrichMovie(results[0])
+	if err != nil || enriched.ExternalIDs["imdb"] != "tt0042" { t.Fatalf("external ID enrichment failed: %+v err=%v", enriched, err) }
+}
+
+func TestApplyMetadataStoresExternalIDsAndSources(t *testing.T) {
+	m := Media{ID:1, Title:"Old"}
+	candidate := MetadataCandidate{
+		Provider:"tmdb", ProviderID:"123", Title:"New", Year:2026,
+		Overview:"Overview", Poster:"poster", Backdrop:"backdrop",
+		ExternalIDs:map[string]string{"tmdb":"123","imdb":"tt0123"},
+	}
+	applyMetadataResult(&m, candidate, "auto", 100)
+	if m.ExternalIDs["tmdb"] != "123" || m.ExternalIDs["imdb"] != "tt0123" {
+		t.Fatalf("external IDs not persisted: %+v", m.ExternalIDs)
+	}
+	if m.MetadataProvider != "tmdb" || m.MetadataSources["poster"] != "tmdb" || m.MetadataUpdated == "" {
+		t.Fatalf("metadata provenance missing: %+v", m)
+	}
+}

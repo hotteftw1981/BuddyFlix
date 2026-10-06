@@ -18,8 +18,10 @@ async function renderAdmin(){
   state.media=await api('/api/media?include_missing=1');
   state.settings=await api('/api/settings');
   state.metadataJob=await api('/api/metadata/bulk');
+  state.metadataProviders=await api('/api/metadata/providers');
   let s=state.system, cfg=state.settings;
   let reviewCount=state.media.filter(m=>m.metadata_state==='review'&&m.pending_metadata).length;
+  let providerBadges=(state.metadataProviders||[]).map(p=>`<span class="badge ${p.configured?'ok':'warn'}">${esc(p.name.toUpperCase())} · ${p.configured?'aktiv':'nicht konfiguriert'}</span>`).join(' ');
   $('#content').innerHTML=`
   <div class="rowhead"><div><h2>Verwaltung</h2><div class="muted">Server, Bibliotheken und Zugriff verwalten</div></div><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div>
   <div class="stats">
@@ -82,7 +84,7 @@ async function renderAdmin(){
       </form>
       <p class="muted">Wird lokal in deiner BuddyFlix-Konfiguration gespeichert und nicht im Repository.</p>
       <div class="metadata-auto">
-        <div class="metadata-auto-head"><div><strong>Automatische Erkennung</strong><div class="muted">Nur Medien ohne vorhandene Metadaten. Eindeutige Treffer werden übernommen, unsichere landen bei „Bitte prüfen“.</div></div><span class="badge ${reviewCount?'warn':'ok'}">${reviewCount} zu prüfen</span></div>
+        <div class="metadata-auto-head"><div><strong>BuddyFlix Metadata Engine</strong><div class="muted">Provider-neutral: eindeutige Treffer werden übernommen, unsichere landen bei „Bitte prüfen“.</div><div class="provider-badges">${providerBadges}</div></div><span class="badge ${reviewCount?'warn':'ok'}">${reviewCount} zu prüfen</span></div>
         <div class="toolbar"><button type="button" class="btn primary" id="bulkmeta" ${cfg.tmdb_configured?'':'disabled'}>Metadaten automatisch laden</button><button type="button" class="btn ghost" id="filterreview">Bitte prüfen (${reviewCount})</button></div>
         <div class="metadata-job" id="metajob">${metadataJobMarkup(state.metadataJob)}</div>
       </div>
@@ -117,8 +119,10 @@ function adminMediaRows(items){
   if(!items.length)return '<div class="empty">Keine Medien vorhanden.</div>';
   return items.map(m=>{
     let suggestion=m.pending_metadata;
-    let suggested=suggestion?`<div class="metadata-suggestion"><span class="badge warn">Bitte prüfen · ${m.metadata_confidence||0}%</span><strong>${esc(suggestion.title)}</strong><span class="muted">${suggestion.year||'ohne Jahr'}</span></div>`:'';
-    return `<div class="media-admin-row ${m.missing?'is-missing':''} ${suggestion?'has-suggestion':''}"><div class="media-admin-poster">${m.poster?`<img src="${esc(m.poster)}">`:'▶'}</div><div class="media-admin-main"><strong>${esc(m.title)}</strong><div class="muted">${m.year||'ohne Jahr'} · ${m.overview?'Metadaten vorhanden':'ohne Metadaten'}${m.missing?' · Datei fehlt':''}</div>${suggested}<div class="pathline">${esc(m.path)}</div></div><div class="toolbar">${suggestion?`<button class="btn primary" onclick="applyPendingMetadata(${m.id})">Vorschlag übernehmen</button>`:''}<button class="btn ghost" onclick="identifyMediaById(${m.id})">Identifizieren</button><button class="btn ghost" onclick="editMediaById(${m.id})">Bearbeiten</button><button class="btn ghost" onclick="mediaAction(${m.id},'${m.progress>=95?'mark_unwatched':'mark_watched'}')">${m.progress>=95?'Ungesehen':'Gesehen'}</button><button class="btn ghost" onclick="mediaAction(${m.id},'reset_progress')">Fortschritt 0</button></div></div>`;
+    let suggested=suggestion?`<div class="metadata-suggestion"><span class="badge warn">Bitte prüfen · ${m.metadata_confidence||0}%</span><strong>${esc(suggestion.title)}</strong><span class="muted">${suggestion.year||'ohne Jahr'} · ${esc((suggestion.provider||'Quelle').toUpperCase())}</span></div>`:'';
+    let ids=m.external_ids||{},idParts=[];if(ids.tmdb)idParts.push('TMDb '+esc(ids.tmdb));if(ids.imdb)idParts.push('IMDb '+esc(ids.imdb));if(ids.wikidata)idParts.push('Wikidata '+esc(ids.wikidata));
+    let source=m.metadata_provider?`<div class="metadata-source">Quelle: <strong>${esc(m.metadata_provider.toUpperCase())}</strong>${idParts.length?' · '+idParts.join(' · '):''}</div>`:'';
+    return `<div class="media-admin-row ${m.missing?'is-missing':''} ${suggestion?'has-suggestion':''}"><div class="media-admin-poster">${m.poster?`<img src="${esc(m.poster)}">`:'▶'}</div><div class="media-admin-main"><strong>${esc(m.title)}</strong><div class="muted">${m.year||'ohne Jahr'} · ${m.overview?'Metadaten vorhanden':'ohne Metadaten'}${m.missing?' · Datei fehlt':''}</div>${source}${suggested}<div class="pathline">${esc(m.path)}</div></div><div class="toolbar">${suggestion?`<button class="btn primary" onclick="applyPendingMetadata(${m.id})">Vorschlag übernehmen</button>`:''}<button class="btn ghost" onclick="identifyMediaById(${m.id})">Identifizieren</button><button class="btn ghost" onclick="editMediaById(${m.id})">Bearbeiten</button><button class="btn ghost" onclick="mediaAction(${m.id},'${m.progress>=95?'mark_unwatched':'mark_watched'}')">${m.progress>=95?'Ungesehen':'Gesehen'}</button><button class="btn ghost" onclick="mediaAction(${m.id},'reset_progress')">Fortschritt 0</button></div></div>`;
   }).join('')
 }
 function renderAdminMedia(mode='all'){

@@ -61,6 +61,9 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - Übernahme eines gezielt ausgewählten TMDb-Treffers
 - automatische TMDb-Metadatenerkennung für komplette Bibliotheken
 - konservative Auto-Zuordnung eindeutiger Treffer; unsichere Treffer landen in „Bitte prüfen“
+- provider-neutrale BuddyFlix Metadata Engine als Basis für weitere Metadatenquellen
+- persistente externe IDs (aktuell TMDb; IMDb/Wikidata werden bei TMDb-Details mitgespeichert, sofern vorhanden)
+- Herkunftsangaben für übernommene Metadatenfelder
 - Client-/Discovery-Endpunkte für spätere Apps
 - dynamische Versionsanzeige im Frontend
 - eindeutige Dev-Buildnummern für QNAP-Testpakete
@@ -267,6 +270,7 @@ Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
 - Medienstatus und Bereinigung
 - auswählbare TMDb-Treffer
 - automatische TMDb-Metadatenläufe mit Prüfliste für unsichere Treffer
+- provider-neutrale Metadata Engine mit externen IDs und Quellenherkunft
 - erste Client-/Discovery-API
 - CI für Go-Tests, JavaScript-Syntaxcheck, AMD64 und ARMHF
 
