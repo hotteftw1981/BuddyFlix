@@ -1,17 +1,25 @@
-const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null;let movieFilter='all',movieSort='recent';
+const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',heroIndex=0;
 async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});if(r.status===401){loginView();throw new Error('unauthorized')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Fehler');return j}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function toast(t){let x=document.createElement('div');x.className='toast';x.textContent=t;document.body.append(x);setTimeout(()=>x.remove(),2500)}
 function setupView(info={}){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card setup-card" id="setup"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><div class="setup-step">ERSTEINRICHTUNG</div><h1>Mach es zu deinem Server.</h1><div class="muted">Einmal kurz einrichten, danach gehört die Standard-Anmeldung der Vergangenheit an.</div><label class="field">Servername<input name="server_name" value="${esc(info.server_name||'BuddyFlix')}"></label><label class="field">Admin-Benutzer<input name="admin_user" value="admin" autocomplete="username"></label><label class="field">Admin-Passwort<input name="password" type="password" minlength="8" autocomplete="new-password"></label><label class="field">Passwort wiederholen<input name="repeat" type="password" minlength="8" autocomplete="new-password"></label><div class="notice">Metadatenanbieter werden von BuddyFlix verwaltet. Für die normale Einrichtung ist kein eigener API-Key vorgesehen.</div><button class="btn primary">BuddyFlix einrichten</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#setup').onsubmit=async e=>{e.preventDefault();if(e.target.password.value!==e.target.repeat.value){$('#err').textContent='Die Passwörter stimmen nicht überein.';return}try{await api('/api/setup',{method:'POST',body:JSON.stringify({server_name:e.target.server_name.value,admin_user:e.target.admin_user.value,password:e.target.password.value})});toast('Einrichtung abgeschlossen');loginView()}catch(x){$('#err').textContent=x.message}}}
 function loginView(){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card" id="login"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><h1>Willkommen zurück.</h1><div class="muted">Dein schlanker Media Server.</div><label class="field">Benutzer<input name="u" placeholder="Benutzername" autocomplete="username"></label><label class="field">Passwort<input name="p" type="password" autocomplete="current-password"></label><button class="btn primary">Anmelden</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#login').onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{method:'POST',body:JSON.stringify({Username:e.target.u.value,Password:e.target.p.value})});await boot()}catch(x){$('#err').textContent=x.message}}}
-function shell(){document.querySelector('#app').innerHTML=`<div class="shell theater-shell"><aside class="side side-rail"><div class="rail-logo"><img src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><nav class="nav rail-nav"><button data-v="home" class="active" title="Startseite"><span class="nav-icon">⌂</span><span class="rail-label">Start</span></button><button data-v="movies" title="Filme"><span class="nav-icon">▣</span><span class="rail-label">Filme</span></button><button data-v="admin" title="Verwaltung"><span class="nav-icon">⚙</span><span class="rail-label">Admin</span></button></nav><div class="rail-bottom"><span class="side-server-dot"></span><span class="rail-version">v${esc(state.system?.version||'dev')}</span></div></aside><main class="main theater-main"><header class="top theater-top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Was willst du sehen?"></div><div class="top-actions"><span class="status"><i class="dot"></i> Online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></div></header><div id="content" class="content theater-content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';renderMovies()},180)}}
+function shell(){document.querySelector('#app').innerHTML=`<div class="shell theater-shell"><aside class="side side-rail"><div class="rail-logo"><img src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><nav class="nav rail-nav"><button data-v="home" class="active" title="Startseite"><span class="nav-icon">⌂</span><span class="rail-label">Start</span></button><button data-v="movies" title="Filme"><span class="nav-icon">▣</span><span class="rail-label">Filme</span></button><button data-v="admin" title="Verwaltung"><span class="nav-icon">⚙</span><span class="rail-label">Admin</span></button></nav><div class="rail-bottom"><span class="side-server-dot"></span><span class="rail-version">v${esc(state.system?.version||'dev')}</span></div></aside><main class="main theater-main"><header class="top theater-top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Was willst du sehen?"></div><div class="top-actions"><button class="btn ghost cinema-toggle" id="cinema" title="Kino-Fokus">◩ Kino</button><span class="status"><i class="dot"></i> Online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></div></header><div id="content" class="content theater-content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};$('#cinema').onclick=toggleCinemaMode;let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{stopHeroRotation();state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';movieDecade='all';renderMovies()},180)}}
 async function boot(){try{const setup=await fetch('/api/setup/status').then(r=>r.json());if(!setup.setup_done){setupView(setup);return}state.system=await api('/api/system');state.media=await api('/api/media');state.libs=await api('/api/libraries');shell();renderHome()}catch(e){if(e.message!=='unauthorized')loginView()}}
-async function view(v,b){document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
+async function view(v,b){document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));if(v!=='home')stopHeroRotation();try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
 function card(m){let pct=mediaProgress(m),resumable=m.position>20&&m.duration>0&&pct<95;return `<article class="card theater-card" onclick="detail(${m.id})"><div class="poster">${m.poster?`<img loading="lazy" src="${esc(m.poster)}" alt="">`:`<div class="placeholder"><span>▶</span><small>Kein Poster</small></div>`}<div class="poster-shade"></div><div class="poster-info"><strong>${esc(m.title)}</strong><span>${m.year||'Film'}${resumable?` · ${Math.round(pct)}%`:m.progress>=95?' · gesehen':''}</span></div><button class="poster-play" aria-label="${resumable?'Fortsetzen':'Abspielen'}" onclick="event.stopPropagation();play(${m.id},'${resumable?'resume':'start'}')">▶</button>${m.progress>0&&m.progress<95?`<div class="progress"><i style="width:${Math.min(100,m.progress)}%"></i></div>`:''}${m.progress>=95?'<span class="watched-mark">✓</span>':''}</div></article>`}
 
 function homeSection(title,items,subtitle=''){if(!items.length)return '';return `<section class="home-section theater-shelf"><div class="rowhead"><div><div class="shelf-kicker">${esc(subtitle||'BUDDYFLIX')}</div><h2>${esc(title)}</h2></div><span class="rail-count">${items.length}</span></div><div class="media-rail">${items.map(card).join('')}</div></section>`}
 
-function miniPoster(m){if(!m)return '';return `<button class="hero-mini" onclick="detail(${m.id})" title="${esc(m.title)}">${m.poster?`<img src="${esc(m.poster)}" alt="">`:'<span>▶</span>'}<i>${esc(m.title)}</i></button>`}
+function miniPoster(m,index){if(!m)return '';return `<button class="hero-mini" onclick="setHero(${index})" title="${esc(m.title)}">${m.poster?`<img src="${esc(m.poster)}" alt="">`:'<span>▶</span>'}<i>${esc(m.title)}</i></button>`}
+
+function stopHeroRotation(){clearTimeout(heroTimer);heroTimer=null}
+function setHero(index){stopHeroRotation();heroIndex=Math.max(0,index||0);renderHome()}
+function shiftHero(delta){let c=heroCandidates();if(!c.length)return;heroIndex=(heroIndex+delta+c.length)%c.length;renderHome()}
+function heroCandidates(){let rich=state.media.filter(m=>m.backdrop&&m.poster);let fallback=state.media.filter(m=>m.backdrop||m.poster);return (rich.length?rich:fallback).slice(0,8)}
+function scheduleHeroRotation(){stopHeroRotation();let c=heroCandidates();if(c.length<2)return;heroTimer=setTimeout(()=>{heroIndex=(heroIndex+1)%c.length;renderHome()},12000)}
+function toggleCinemaMode(){document.body.classList.toggle('cinema-focus');let b=$('#cinema');if(b)b.textContent=document.body.classList.contains('cinema-focus')?'◫ Zurück':'◩ Kino'}
+function featureStrip(items){if(!items.length)return '';return `<section class="feature-strip">${items.slice(0,3).map((m,i)=>`<article class="feature-tile" onclick="detail(${m.id})"><div class="feature-bg" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"></div><div class="feature-shade"></div><div class="feature-copy"><span>0${i+1}</span><strong>${esc(m.title)}</strong><small>${m.year||'Film'} · Mehr entdecken</small></div></article>`).join('')}</section>`}
 
 function pickSomething(){let pool=state.media.filter(m=>!m.missing);if(!pool.length){toast('Noch keine Filme vorhanden');return}let unseen=pool.filter(m=>mediaProgress(m)<1),choices=unseen.length?unseen:pool,m=choices[Math.floor(Math.random()*choices.length)];detail(m.id)}
 
@@ -19,15 +27,22 @@ function renderHome(){
   let continueItems=state.media.filter(m=>m.progress>1&&m.progress<95).slice(0,12);
   let newest=state.media.slice(0,18);
   let unseen=state.media.filter(m=>mediaProgress(m)<1).slice(0,14);
-  let hero=continueItems.find(m=>m.backdrop)||state.media.find(m=>m.backdrop)||state.media.find(m=>m.poster)||state.media[0];
+  let classics=state.media.filter(m=>m.year&&m.year<2000).slice(0,14);
+  let modern=state.media.filter(m=>m.year>=2010).slice(0,14);
+  let heroes=heroCandidates();
+  if(heroes.length&&heroIndex>=heroes.length)heroIndex=0;
+  let hero=heroes[heroIndex]||continueItems.find(m=>m.backdrop)||state.media[0];
   let heroPct=hero?mediaProgress(hero):0,heroResume=hero&&hero.position>20&&hero.duration>0&&heroPct<95;
   let watchedCount=state.media.filter(m=>mediaProgress(m)>=95).length;
-  let spotlight=state.media.filter(m=>m.id!==hero?.id&&m.poster).slice(0,3);
+  let spotlight=heroes.filter((_,i)=>i!==heroIndex).slice(0,3);
+  let showcase=[...state.media.filter(m=>m.backdrop&&m.id!==hero?.id)].slice(0,3);
   $('#content').innerHTML=`
-    ${hero?`<section class="immersive-hero">
+    ${hero?`<section class="immersive-hero" onmouseenter="stopHeroRotation()" onmouseleave="scheduleHeroRotation()">
       <div class="immersive-bg" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div>
       <div class="immersive-fade"></div>
       <div class="immersive-grain"></div>
+      <div class="hero-nav hero-nav-left"><button onclick="shiftHero(-1)" aria-label="Vorheriger Film">‹</button></div>
+      <div class="hero-nav hero-nav-right"><button onclick="shiftHero(1)" aria-label="Nächster Film">›</button></div>
       <div class="immersive-copy">
         <div class="immersive-eyebrow"><span>BUDDYFLIX ORIGINAL PICK</span><b>${hero.year||'Film'}</b></div>
         <h1>${esc(hero.title)}</h1>
@@ -38,17 +53,22 @@ function renderHome(){
           <button class="round-action" onclick="pickSomething()" title="Überrasch mich">⤨</button>
         </div>
         ${heroResume?`<div class="immersive-progress"><div><span>Weiter bei ${fmtTime(hero.position)}</span><b>${Math.round(heroPct)}%</b></div><i><em style="width:${heroPct}%"></em></i></div>`:''}
+        <div class="hero-dots">${heroes.map((_,i)=>`<button class="${i===heroIndex?'active':''}" onclick="setHero(${i})" aria-label="Spotlight ${i+1}"></button>`).join('')}</div>
       </div>
-      <div class="hero-stack"><div class="hero-stack-label">ALS NÄCHSTES</div>${spotlight.map(miniPoster).join('')}</div>
+      <div class="hero-stack"><div class="hero-stack-label">ALS NÄCHSTES</div>${spotlight.map(m=>miniPoster(m,heroes.indexOf(m))).join('')}</div>
       <div class="immersive-stats"><span><b>${state.media.length}</b><small>Filme</small></span><span><b>${watchedCount}</b><small>gesehen</small></span><span><b>${continueItems.length}</b><small>offen</small></span></div>
     </section>`:''}
     <div class="shelf-zone">
+      ${featureStrip(showcase)}
       ${homeSection('Weiterschauen',continueItems,'DEIN FORTSCHRITT')}
       ${homeSection('Frisch eingetroffen',newest,'NEU IN DEINER SAMMLUNG')}
+      ${homeSection('Klassiker',classics,'VOR 2000')}
+      ${homeSection('Moderne Favoriten',modern,'AB 2010')}
       ${homeSection('Noch ungesehen',unseen,'NOCH NICHT ENTDECKT')}
     </div>
     ${!state.media.length?'<div class="empty home-empty">Noch keine Medien. Lege unter Verwaltung eine Bibliothek an.</div>':''}
-  `
+  `;
+  scheduleHeroRotation()
 }
 
 function filteredMovies(){
@@ -56,16 +76,19 @@ function filteredMovies(){
   if(movieFilter==='unseen')items=items.filter(m=>mediaProgress(m)<1);
   if(movieFilter==='continue')items=items.filter(m=>m.progress>1&&m.progress<95);
   if(movieFilter==='watched')items=items.filter(m=>mediaProgress(m)>=95);
+  if(movieDecade!=='all'){let d=Number(movieDecade);items=items.filter(m=>m.year>=d&&m.year<d+10)}
   if(movieSort==='title')items.sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''),'de'));
   if(movieSort==='year')items.sort((a,b)=>(b.year||0)-(a.year||0));
   return items
 }
 function setMovieFilter(filter){movieFilter=filter;renderMovies()}
 function setMovieSort(sort){movieSort=sort;renderMovies()}
+function setMovieDecade(decade){movieDecade=decade;renderMovies()}
 function renderMovies(){
   if(!$('#content'))return;
   let items=filteredMovies(),watched=state.media.filter(m=>mediaProgress(m)>=95).length,continuing=state.media.filter(m=>m.progress>1&&m.progress<95).length;
   let filters=[['all','Alle'],['unseen','Ungesehen'],['continue','Weiterschauen'],['watched','Gesehen']];
+  let decades=[1970,1980,1990,2000,2010,2020].filter(d=>state.media.some(m=>m.year>=d&&m.year<d+10));
   $('#content').innerHTML=`<section class="movies-page theater-library">
     <div class="library-aurora"></div>
     <div class="movies-heading">
@@ -76,6 +99,8 @@ function renderMovies(){
       <div class="movie-filterbar">${filters.map(([id,label])=>`<button class="${movieFilter===id?'active':''}" onclick="setMovieFilter('${id}')">${label}</button>`).join('')}</div>
       <div class="sort-group"><span>Sortieren</span><button class="${movieSort==='recent'?'active':''}" onclick="setMovieSort('recent')">Neu</button><button class="${movieSort==='title'?'active':''}" onclick="setMovieSort('title')">A–Z</button><button class="${movieSort==='year'?'active':''}" onclick="setMovieSort('year')">Jahr</button></div>
     </div>
+    <div class="decade-bar"><button class="${movieDecade==='all'?'active':''}" onclick="setMovieDecade('all')">Alle Jahre</button>${decades.map(d=>`<button class="${String(movieDecade)===String(d)?'active':''}" onclick="setMovieDecade('${d}')">${String(d).slice(2)}er</button>`).join('')}</div>
+    <div class="library-resultline"><strong>${items.length}</strong><span>Treffer in dieser Ansicht</span></div>
     <div class="movie-grid theater-grid">${items.map(card).join('')||'<div class="empty movies-empty">In dieser Ansicht gibt es gerade nichts zu sehen.</div>'}</div>
   </section>`
 }
