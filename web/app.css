@@ -14,3 +14,5 @@
 
 /* Provider credentials */
 .provider-advanced{margin-top:14px;padding:12px 14px;border:1px solid #282f3b;border-radius:12px;background:#0e1117}.provider-advanced summary{cursor:pointer;font-weight:750;color:#cfd5df}.provider-advanced form{margin-top:12px}.provider-advanced .field{margin-bottom:10px}
+
+.provider-attribution{margin-top:12px;font-size:12px;color:#8c95a6}.provider-attribution a{color:#bfc8d8;text-decoration:underline}
