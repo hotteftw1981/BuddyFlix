@@ -21,9 +21,9 @@ async function renderAdmin(){
   state.metadataProviders=await api('/api/metadata/providers');
   let s=state.system, cfg=state.settings;
   let reviewCount=state.media.filter(m=>m.metadata_state==='review'&&m.pending_metadata).length;
-  let providerBadges=(state.metadataProviders||[]).map(p=>{let src=p.credential_source==='builtin'?'BuddyFlix':p.credential_source==='override'?'eigener Override':p.credential_source==='environment'?'Server-Umgebung':'';return `<span class="badge ${p.configured?'ok':'warn'}">${esc(p.name.toUpperCase())} · ${p.configured?(src||'aktiv'):'nicht konfiguriert'}</span>`}).join(' ');
-  let tmdbSource=cfg.tmdb_credential_source||'missing';
-  let tmdbStatus=tmdbSource==='builtin'?'BuddyFlix-Standardzugang aktiv':tmdbSource==='override'?'Eigener TMDb-Override aktiv':tmdbSource==='environment'?'TMDb-Zugang über Server-Umgebung aktiv':'BuddyFlix-Projektzugang fehlt in diesem Build';
+  let providerBadges=(state.metadataProviders||[]).map(p=>{let src=p.credential_source==='builtin'?'BuddyFlix':p.credential_source==='override'?'eigener Override':p.credential_source==='environment'?'Server-Umgebung':'';let name=p.name==='thetvdb'?'TheTVDB':p.name.toUpperCase();return `<span class="badge ${p.configured?'ok':'warn'}">${esc(name)} · ${p.configured?(src||'aktiv'):'nicht konfiguriert'}</span>`}).join(' ');
+  let tvdbSource=cfg.tvdb_credential_source||'missing';
+  let tvdbStatus=tvdbSource==='builtin'?'BuddyFlix-TheTVDB-Zugang aktiv':tvdbSource==='override'?'Eigener TheTVDB-Override aktiv':tvdbSource==='environment'?'TheTVDB-Zugang über Server-Umgebung aktiv':'TheTVDB-Projektzugang fehlt in diesem Build';
   $('#content').innerHTML=`
   <div class="rowhead"><div><h2>Verwaltung</h2><div class="muted">Server, Bibliotheken und Zugriff verwalten</div></div><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div>
   <div class="stats">
@@ -79,19 +79,20 @@ async function renderAdmin(){
     </section>
 
     <section class="panel">
-      <div class="panel-title"><div><h3>Metadaten</h3><p class="muted">Poster, Backdrops und Beschreibungen.</p></div><span class="badge ${cfg.tmdb_configured?'ok':'warn'}">${cfg.tmdb_configured?'bereit':'nicht bereit'}</span></div>
-      <div class="notice"><strong>${esc(tmdbStatus)}</strong><br>${tmdbSource==='missing'?'Dieser Build enthält noch kein zentrales BuddyFlix-Projektcredential.':'Normale Benutzer müssen keinen eigenen TMDb-Key eintragen.'}</div>
+      <div class="panel-title"><div><h3>Metadaten</h3><p class="muted">Poster, Backdrops und Beschreibungen.</p></div><span class="badge ${cfg.tvdb_configured?'ok':'warn'}">${cfg.tvdb_configured?'bereit':'nicht bereit'}</span></div>
+      <div class="notice"><strong>${esc(tvdbStatus)}</strong><br>${tvdbSource==='missing'?'Dieser Build enthält noch kein TheTVDB-Projektcredential.':'Normale Benutzer müssen keinen eigenen API-Key eintragen.'}</div>
+      <div class="provider-attribution">Metadata provided by <a href="https://thetvdb.com" target="_blank" rel="noreferrer">TheTVDB</a>. Please consider adding missing information or subscribing.</div>
       <details class="provider-advanced">
-        <summary>Expertenoption: eigenen TMDb-Key verwenden</summary>
-        <form id="tmdbform">
-          <label class="field">TMDb API-Key<input name="tmdb_api_key" type="password" placeholder="${cfg.tmdb_override?'Eigener Override ist gesetzt':'Optionaler eigener Override'}"></label>
-          <div class="toolbar"><button class="btn ghost">Override speichern</button>${cfg.tmdb_override?'<button type="button" class="btn danger" id="cleartmdb">Override entfernen</button>':''}</div>
+        <summary>Expertenoption: eigenen TheTVDB-Key verwenden</summary>
+        <form id="tvdbform">
+          <label class="field">TheTVDB API-Key<input name="tvdb_api_key" type="password" placeholder="${cfg.tvdb_override?'Eigener Override ist gesetzt':'Optionaler eigener Override'}"></label>
+          <div class="toolbar"><button class="btn ghost">Override speichern</button>${cfg.tvdb_override?'<button type="button" class="btn danger" id="cleartvdb">Override entfernen</button>':''}</div>
         </form>
-        <p class="muted">Ein eigener Key überschreibt nur auf diesem Server den BuddyFlix-Standardzugang.</p>
+        <p class="muted">Ein eigener Key überschreibt nur auf diesem Server den BuddyFlix-Projektzugang.</p>
       </details>
       <div class="metadata-auto">
-        <div class="metadata-auto-head"><div><strong>BuddyFlix Metadata Engine</strong><div class="muted">Provider-neutral: eindeutige Treffer werden übernommen, unsichere landen bei „Bitte prüfen“.</div><div class="provider-badges">${providerBadges}</div></div><span class="badge ${reviewCount?'warn':'ok'}">${reviewCount} zu prüfen</span></div>
-        <div class="toolbar"><button type="button" class="btn primary" id="bulkmeta" ${cfg.tmdb_configured?'':'disabled'}>Metadaten automatisch laden</button><button type="button" class="btn ghost" id="filterreview">Bitte prüfen (${reviewCount})</button></div>
+        <div class="metadata-auto-head"><div><strong>BuddyFlix Metadata Engine</strong><div class="muted">TheTVDB ist der primäre Provider. Eindeutige Treffer werden übernommen, unsichere landen bei „Bitte prüfen“.</div><div class="provider-badges">${providerBadges}</div></div><span class="badge ${reviewCount?'warn':'ok'}">${reviewCount} zu prüfen</span></div>
+        <div class="toolbar"><button type="button" class="btn primary" id="bulkmeta" ${cfg.tvdb_configured?'':'disabled'}>Metadaten automatisch laden</button><button type="button" class="btn ghost" id="filterreview">Bitte prüfen (${reviewCount})</button></div>
         <div class="metadata-job" id="metajob">${metadataJobMarkup(state.metadataJob)}</div>
       </div>
     </section>
@@ -112,8 +113,8 @@ async function renderAdmin(){
   $('#libform').onsubmit=addLib;
   $('#settingsform').onsubmit=saveSettings;
   $('#passwordform').onsubmit=changePassword;
-  const tmdbForm=$('#tmdbform'); if(tmdbForm) tmdbForm.onsubmit=saveTMDb;
-  const clear=$('#cleartmdb'); if(clear) clear.onclick=clearTMDb;
+  const tvdbForm=$('#tvdbform'); if(tvdbForm) tvdbForm.onsubmit=saveTVDB;
+  const clearTVDBButton=$('#cleartvdb'); if(clearTVDBButton) clearTVDBButton.onclick=clearTVDB;
   $('#filtermeta').onclick=()=>renderAdminMedia('metadata');
   $('#filtermissing').onclick=()=>renderAdminMedia('missing');
   $('#filterreview').onclick=()=>renderAdminMedia('review');
@@ -126,7 +127,7 @@ function adminMediaRows(items){
   return items.map(m=>{
     let suggestion=m.pending_metadata;
     let suggested=suggestion?`<div class="metadata-suggestion"><span class="badge warn">Bitte prüfen · ${m.metadata_confidence||0}%</span><strong>${esc(suggestion.title)}</strong><span class="muted">${suggestion.year||'ohne Jahr'} · ${esc((suggestion.provider||'Quelle').toUpperCase())}</span></div>`:'';
-    let ids=m.external_ids||{},idParts=[];if(ids.tmdb)idParts.push('TMDb '+esc(ids.tmdb));if(ids.imdb)idParts.push('IMDb '+esc(ids.imdb));if(ids.wikidata)idParts.push('Wikidata '+esc(ids.wikidata));
+    let ids=m.external_ids||{},idParts=[];if(ids.tvdb)idParts.push('TheTVDB '+esc(ids.tvdb));if(ids.tmdb)idParts.push('TMDb '+esc(ids.tmdb));if(ids.imdb)idParts.push('IMDb '+esc(ids.imdb));if(ids.wikidata)idParts.push('Wikidata '+esc(ids.wikidata));
     let source=m.metadata_provider?`<div class="metadata-source">Quelle: <strong>${esc(m.metadata_provider.toUpperCase())}</strong>${idParts.length?' · '+idParts.join(' · '):''}</div>`:'';
     return `<div class="media-admin-row ${m.missing?'is-missing':''} ${suggestion?'has-suggestion':''}"><div class="media-admin-poster">${m.poster?`<img src="${esc(m.poster)}">`:'▶'}</div><div class="media-admin-main"><strong>${esc(m.title)}</strong><div class="muted">${m.year||'ohne Jahr'} · ${m.overview?'Metadaten vorhanden':'ohne Metadaten'}${m.missing?' · Datei fehlt':''}</div>${source}${suggested}<div class="pathline">${esc(m.path)}</div></div><div class="toolbar">${suggestion?`<button class="btn primary" onclick="applyPendingMetadata(${m.id})">Vorschlag übernehmen</button>`:''}<button class="btn ghost" onclick="identifyMediaById(${m.id})">Identifizieren</button><button class="btn ghost" onclick="editMediaById(${m.id})">Bearbeiten</button><button class="btn ghost" onclick="mediaAction(${m.id},'${m.progress>=95?'mark_unwatched':'mark_watched'}')">${m.progress>=95?'Ungesehen':'Gesehen'}</button><button class="btn ghost" onclick="mediaAction(${m.id},'reset_progress')">Fortschritt 0</button></div></div>`;
   }).join('')
@@ -191,6 +192,8 @@ async function addLib(e){e.preventDefault();try{await api('/api/libraries',{meth
 async function removeLib(id){if(!confirm('Bibliothek und Index entfernen? Die Mediendateien bleiben unangetastet.'))return;await api('/api/libraries?id='+id,{method:'DELETE'});await refresh();renderAdmin()}
 async function editLib(id){let l=state.libs.find(x=>x.id===id);if(!l)return;let el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="modalbox compact"><div class="panel"><div class="panel-title"><h3>Bibliothek bearbeiten</h3><button class="close">×</button></div><form id="editlib"><label class="field">Name<input name="name" value="${esc(l.name)}"></label><label class="field">Typ<select name="type"><option value="movies" ${l.type==='movies'?'selected':''}>Filme</option><option value="shows" ${l.type==='shows'?'selected':''}>Serien</option><option value="other" ${l.type==='other'?'selected':''}>Andere Videos</option></select></label><label class="field">Pfad<input name="path" value="${esc(l.path)}"></label><button class="btn primary">Änderungen speichern</button></form></div></div>`;document.body.append(el);el.querySelector('.close').onclick=()=>el.remove();el.querySelector('#editlib').onsubmit=async e=>{e.preventDefault();try{await api('/api/libraries?id='+id,{method:'PUT',body:JSON.stringify({name:e.target.name.value,path:e.target.path.value,type:e.target.type.value})});toast('Bibliothek aktualisiert');el.remove();await refresh();renderAdmin()}catch(x){toast(x.message)}}}
 async function saveSettings(e){e.preventDefault();try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:e.target.server_name.value,admin_user:e.target.admin_user.value})});toast('Servereinstellungen gespeichert');renderAdmin()}catch(x){toast(x.message)}}
+async function saveTVDB(e){e.preventDefault();const key=e.target.tvdb_api_key.value.trim();if(!key){toast('Bitte einen API-Key eintragen');return}try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:state.settings.server_name,admin_user:state.settings.admin_user,tvdb_api_key:key})});toast('Eigener TheTVDB-Override gespeichert');renderAdmin()}catch(x){toast(x.message)}}
+async function clearTVDB(){if(!confirm('Eigenen TheTVDB-Override wirklich entfernen und wieder den BuddyFlix-Projektzugang verwenden?'))return;try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:state.settings.server_name,admin_user:state.settings.admin_user,tvdb_api_key:''})});toast('TheTVDB-Override entfernt');renderAdmin()}catch(x){toast(x.message)}}
 async function saveTMDb(e){e.preventDefault();const key=e.target.tmdb_api_key.value.trim();if(!key){toast('Bitte einen API-Key eintragen');return}try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:state.settings.server_name,admin_user:state.settings.admin_user,tmdb_api_key:key})});toast('Eigener TMDb-Override gespeichert');renderAdmin()}catch(x){toast(x.message)}}
 async function clearTMDb(){if(!confirm('Eigenen TMDb-Override wirklich entfernen und wieder den BuddyFlix-Standardzugang verwenden?'))return;try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:state.settings.server_name,admin_user:state.settings.admin_user,tmdb_api_key:''})});toast('TMDb-Override entfernt');renderAdmin()}catch(x){toast(x.message)}}
 async function changePassword(e){e.preventDefault();if(e.target.next.value!==e.target.repeat.value){toast('Die neuen Passwörter stimmen nicht überein');return}try{await api('/api/password',{method:'POST',body:JSON.stringify({current:e.target.current.value,new:e.target.next.value})});toast('Passwort geändert – bitte neu anmelden');setTimeout(loginView,700)}catch(x){toast(x.message)}}
