@@ -169,6 +169,8 @@ func (s *Server) load() error {
 	}
 	b, err := os.ReadFile(s.dbPath())
 	if os.IsNotExist(err) {
+		s.st.Profiles = []Profile{{ID: 1, Name: "Hauptprofil", Avatar: "🍿", Created: time.Now().Format(time.RFC3339)}}
+		s.st.NextProfileID = 2
 		return s.saveLocked()
 	}
 	if err != nil {
