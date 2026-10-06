@@ -527,8 +527,8 @@ func TestTVDBSearchRetriesCleanedTitleWithoutYear(t *testing.T) {
 	if len(results) != 1 || results[0].ProviderID != "42" {
 		t.Fatalf("expected cleaned yearless fallback hit, got %+v", results)
 	}
-	if len(queries) != 3 {
-		t.Fatalf("expected 3 search attempts, got %d: %+v", len(queries), queries)
+	if len(queries) < 4 {
+		t.Fatalf("expected cleaned and yearless fallback attempts, got %d: %+v", len(queries), queries)
 	}
 }
 
@@ -565,5 +565,60 @@ func TestTVDBSearchPrefersGermanTranslation(t *testing.T) {
 	_, confidence, auto, ok := chooseMetadataMatch("Das Leben der Anderen", 2006, results)
 	if !ok || !auto || confidence < 95 {
 		t.Fatalf("German translation should auto-match: confidence=%d auto=%v ok=%v result=%+v", confidence, auto, ok, results[0])
+	}
+}
+
+
+func TestGermanSearchVariantsIncludeUmlautForm(t *testing.T) {
+	variants := germanSearchVariants("Zurueck in die Zukunft")
+	found := false
+	for _, v := range variants {
+		if v == "Zurück in die Zukunft" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected German umlaut search variant, got %+v", variants)
+	}
+}
+
+func TestTVDBRefineCandidatesAddsGermanTitle(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"token":"token"}})
+	})
+	mux.HandleFunc("/movies/42/translations/deu", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{
+			"name":"Die nackte Kanone",
+			"overview":"Deutsche Beschreibung",
+		}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	p := NewTVDBProvider("key")
+	p.baseURL = srv.URL
+	p.client = srv.Client()
+
+	refined, err := p.RefineMovieCandidates([]MetadataCandidate{{
+		Provider:"thetvdb",
+		ProviderID:"42",
+		Title:"The Naked Gun",
+		Year:1988,
+	}})
+	if err != nil || len(refined) != 1 {
+		t.Fatalf("refine failed: %+v %v", refined, err)
+	}
+	found := false
+	for _, alt := range refined[0].AlternateTitles {
+		if alt == "Die nackte Kanone" { found = true }
+	}
+	if !found {
+		t.Fatalf("German title was not added: %+v", refined[0])
+	}
+	_, confidence, auto, ok := chooseMetadataMatch("Die nackte Kanone", 1988, refined)
+	if !ok || !auto || confidence < 95 {
+		t.Fatalf("refined German title should auto-match: confidence=%d auto=%v ok=%v", confidence, auto, ok)
 	}
 }
