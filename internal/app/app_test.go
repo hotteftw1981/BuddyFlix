@@ -450,3 +450,65 @@ func TestTVDBCredentialPrecedence(t *testing.T) {
 		t.Fatalf("override: %q %q", key, source)
 	}
 }
+
+
+func TestCleanMetadataQueryStripsReleaseNoise(t *testing.T) {
+	cases := map[string]string{
+		"Dead.Man.on.Campus.1998.1080p.BluRay.x264-GROUP": "Dead Man on Campus 1998",
+		"Zurueck in die Zukunft 1080p German DTS": "Zurueck in die Zukunft",
+		"Alien_1979_WEB-DL_2160p_HDR": "Alien 1979",
+	}
+	for in, want := range cases {
+		if got := cleanMetadataQuery(in); got != want {
+			t.Fatalf("cleanMetadataQuery(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestMetadataMatchUsesAlternateTitles(t *testing.T) {
+	results := []MetadataCandidate{{
+		Provider: "thetvdb",
+		ProviderID: "1",
+		Title: "The Hangover",
+		AlternateTitles: []string{"Hangover"},
+		Year: 2009,
+	}}
+	got, confidence, auto, ok := chooseMetadataMatch("Hangover", 2009, results)
+	if !ok || !auto || got.ProviderID != "1" || confidence < 95 {
+		t.Fatalf("alternate title should match automatically: %+v %d %v %v", got, confidence, auto, ok)
+	}
+}
+
+func TestTVDBSearchRetriesCleanedTitleWithoutYear(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{"token":"token"}})
+	})
+	var queries []string
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		q := r.URL.Query().Get("query")
+		year := r.URL.Query().Get("year")
+		if q == "Some Movie" && year == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"data":[]any{map[string]any{
+				"tvdb_id":"42","name":"Some Movie","year":"2001",
+			}}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data":[]any{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	p := NewTVDBProvider("key")
+	p.baseURL = srv.URL
+	p.client = srv.Client()
+	results, err := p.SearchMovie("Some Movie 1080p BluRay", 2002)
+	if err != nil { t.Fatal(err) }
+	if len(results) != 1 || results[0].ProviderID != "42" {
+		t.Fatalf("expected cleaned yearless fallback hit, got %+v", results)
+	}
+	if len(queries) != 3 {
+		t.Fatalf("expected 3 search attempts, got %d: %+v", len(queries), queries)
+	}
+}
