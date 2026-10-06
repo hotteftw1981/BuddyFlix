@@ -46,10 +46,10 @@ jobs:
 
       - name: Check BuddyFlix metadata project credential
         env:
-          BUDDYFLIX_TMDB_API_KEY: ${{ secrets.BUDDYFLIX_TMDB_API_KEY }}
+          BUDDYFLIX_TVDB_API_KEY: ${{ secrets.BUDDYFLIX_TVDB_API_KEY }}
         shell: bash
         run: |
-          if [ -n "${BUDDYFLIX_TMDB_API_KEY:-}" ]; then
+          if [ -n "${BUDDYFLIX_TVDB_API_KEY:-}" ]; then
             echo "BuddyFlix metadata project credential: embedded"
           else
             echo "BuddyFlix metadata project credential: missing"
@@ -57,27 +57,27 @@ jobs:
 
       - name: Build linux amd64
         env:
-          BUDDYFLIX_TMDB_API_KEY: ${{ secrets.BUDDYFLIX_TMDB_API_KEY }}
+          BUDDYFLIX_TVDB_API_KEY: ${{ secrets.BUDDYFLIX_TVDB_API_KEY }}
           APP_VERSION: ${{ steps.version.outputs.app_version }}
         shell: bash
         run: |
           set -euo pipefail
           LDFLAGS="-s -w -X buddyflix/internal/app.Version=$APP_VERSION"
-          if [ -n "${BUDDYFLIX_TMDB_API_KEY:-}" ]; then
-            LDFLAGS="$LDFLAGS -X buddyflix/internal/app.BuiltinTMDBAPIKey=$BUDDYFLIX_TMDB_API_KEY"
+          if [ -n "${BUDDYFLIX_TVDB_API_KEY:-}" ]; then
+            LDFLAGS="$LDFLAGS -X buddyflix/internal/app.BuiltinTVDBAPIKey=$BUDDYFLIX_TVDB_API_KEY"
           fi
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o buddyflix-amd64 ./cmd/buddyflix
 
       - name: Build linux ARMHF
         env:
-          BUDDYFLIX_TMDB_API_KEY: ${{ secrets.BUDDYFLIX_TMDB_API_KEY }}
+          BUDDYFLIX_TVDB_API_KEY: ${{ secrets.BUDDYFLIX_TVDB_API_KEY }}
           APP_VERSION: ${{ steps.version.outputs.app_version }}
         shell: bash
         run: |
           set -euo pipefail
           LDFLAGS="-s -w -X buddyflix/internal/app.Version=$APP_VERSION"
-          if [ -n "${BUDDYFLIX_TMDB_API_KEY:-}" ]; then
-            LDFLAGS="$LDFLAGS -X buddyflix/internal/app.BuiltinTMDBAPIKey=$BUDDYFLIX_TMDB_API_KEY"
+          if [ -n "${BUDDYFLIX_TVDB_API_KEY:-}" ]; then
+            LDFLAGS="$LDFLAGS -X buddyflix/internal/app.BuiltinTVDBAPIKey=$BUDDYFLIX_TVDB_API_KEY"
           fi
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="$LDFLAGS" -o buddyflix-armhf ./cmd/buddyflix
 
