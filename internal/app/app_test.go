@@ -270,11 +270,30 @@ func TestMetadataMatchWithoutYearStaysReviewWhenAmbiguous(t *testing.T) {
 	}
 }
 
-func TestMetadataMatchFuzzyNeedsReview(t *testing.T) {
+func TestMetadataMatchClearFuzzyWithExactYearAuto(t *testing.T) {
 	results := []TMDbSearchResult{{ID: 3, Title: "Zurück in die Zukunft", Year: 1985}}
 	got, confidence, auto, ok := chooseMetadataMatch("Zuruck in die Zukunft", 1985, results)
-	if !ok || auto || got.ID != 3 || confidence < 55 {
-		t.Fatalf("expected fuzzy candidate for review, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
+	if !ok || !auto || got.ID != 3 || confidence < 90 {
+		t.Fatalf("expected clear fuzzy candidate with matching year to auto-match, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
+	}
+}
+
+func TestMetadataMatchCloseCandidatesStillNeedReview(t *testing.T) {
+	results := []MetadataCandidate{
+		{Provider:"thetvdb", ProviderID:"1", Title:"Halloween", Year:1978},
+		{Provider:"thetvdb", ProviderID:"2", Title:"Halloween II", Year:1978},
+	}
+	got, confidence, auto, ok := chooseMetadataMatch("Halloween I", 1978, results)
+	if !ok || auto || got.ProviderID == "" || confidence < 55 {
+		t.Fatalf("close candidates must still require review, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
+	}
+}
+
+func TestMetadataMatchIgnoresReleaseNoise(t *testing.T) {
+	results := []MetadataCandidate{{Provider:"thetvdb", ProviderID:"42", Title:"Some Movie", Year:2001}}
+	got, confidence, auto, ok := chooseMetadataMatch("Some Movie 1080p BluRay x264 German", 2001, results)
+	if !ok || !auto || got.ProviderID != "42" || confidence < 95 {
+		t.Fatalf("release noise should not force manual review, got result=%+v confidence=%d auto=%v ok=%v", got, confidence, auto, ok)
 	}
 }
 
