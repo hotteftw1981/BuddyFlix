@@ -24,7 +24,8 @@ type MetadataCandidate struct {
 	Backdrop    string            `json:"backdrop"`
 	ReleaseDate string            `json:"release_date"`
 	Year        int               `json:"year"`
-	ExternalIDs map[string]string `json:"external_ids,omitempty"`
+	ExternalIDs     map[string]string `json:"external_ids,omitempty"`
+	AlternateTitles []string          `json:"alternate_titles,omitempty"`
 }
 
 // Alias keeps older tests/clients source-compatible while the engine becomes provider-neutral.
@@ -211,27 +212,41 @@ func titleSimilarity(a, b string) int {
 	return score
 }
 
+func candidateTitleScore(input string, r MetadataCandidate) (int, bool) {
+	best := titleSimilarity(input, r.Title)
+	exact := normalizedTitle(r.Title) == normalizedTitle(input)
+	for _, alt := range r.AlternateTitles {
+		score := titleSimilarity(input, alt)
+		if score > best { best = score }
+		if normalizedTitle(alt) == normalizedTitle(input) { exact = true }
+	}
+	return best, exact
+}
+
 func chooseMetadataMatch(title string, year int, results []MetadataCandidate) (MetadataCandidate, int, bool, bool) {
 	if len(results) == 0 { return MetadataCandidate{}, 0, false, false }
-	norm := normalizedTitle(title)
 	exactCount := 0
-	for _, r := range results { if normalizedTitle(r.Title) == norm { exactCount++ } }
-	best, bestScore := results[0], -1
 	for _, r := range results {
-		score := titleSimilarity(title, r.Title)
-		exact := normalizedTitle(r.Title) == norm
+		_, exact := candidateTitleScore(title, r)
+		if exact { exactCount++ }
+	}
+
+	best, bestScore, bestExact := results[0], -1, false
+	for _, r := range results {
+		score, exact := candidateTitleScore(title, r)
 		if year > 0 && r.Year > 0 {
 			if year == r.Year { score += 6 } else { score -= 14 }
 		}
 		if !exact && score > 94 { score = 94 }
 		if score > 100 { score = 100 }
 		if score < 0 { score = 0 }
-		if score > bestScore { best, bestScore = r, score }
+		if score > bestScore {
+			best, bestScore, bestExact = r, score, exact
+		}
 	}
 	if bestScore < 55 { return MetadataCandidate{}, bestScore, false, false }
-	exact := normalizedTitle(best.Title) == norm
 	auto := false
-	if exact {
+	if bestExact {
 		if year > 0 { auto = best.Year == year } else { auto = exactCount == 1 }
 	}
 	return best, bestScore, auto, true
