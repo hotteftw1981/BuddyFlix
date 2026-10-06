@@ -37,9 +37,10 @@ type MetadataProvider interface {
 }
 
 type MetadataProviderStatus struct {
-	Name       string `json:"name"`
-	Configured bool   `json:"configured"`
-	Primary    bool   `json:"primary"`
+	Name             string `json:"name"`
+	Configured       bool   `json:"configured"`
+	Primary          bool   `json:"primary"`
+	CredentialSource string `json:"credential_source,omitempty"`
 }
 
 type MetadataEngine struct {

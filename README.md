@@ -52,7 +52,8 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - QNAP-/NAS-Systemordner werden beim Scan übersprungen
 - Scan-Diagnose mit Anzahl gefundener Mediendateien und übersprungener Systemordner
 - erweiterte Verwaltungsoberfläche
-- TMDb-API-Key über die Webverwaltung
+- Unterstützung für ein zentrales BuddyFlix-TMDb-Projektcredential im Build
+- optionaler eigener TMDb-Key nur noch als Server-Override
 - Medien manuell bearbeiten
 - Medienstatus gesehen / ungesehen
 - Wiedergabefortschritt zurücksetzen
@@ -91,7 +92,7 @@ Passwort: buddyflix
 
 ### develop / V0.1.1-dev
 
-Bei einer frischen Installation ist eine **Ersteinrichtung** vorgesehen. Dabei werden Servername, Admin-Benutzer und Passwort selbst vergeben.
+Bei einer frischen Installation ist eine **Ersteinrichtung** vorgesehen. Dabei werden Servername, Admin-Benutzer und Passwort selbst vergeben. Ein eigener TMDb-Key gehört nicht mehr zur normalen Ersteinrichtung. BuddyFlix kann stattdessen ein zentrales Projektcredential im Build verwenden; ein eigener Key bleibt nur als optionaler Override möglich.
 
 ---
 
@@ -271,6 +272,7 @@ Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
 - auswählbare TMDb-Treffer
 - automatische TMDb-Metadatenläufe mit Prüfliste für unsichere Treffer
 - provider-neutrale Metadata Engine mit externen IDs und Quellenherkunft
+- Build-Unterstützung für ein zentrales BuddyFlix-TMDb-Projektcredential; Nutzer-Key nur noch optionaler Override
 - erste Client-/Discovery-API
 - CI für Go-Tests, JavaScript-Syntaxcheck, AMD64 und ARMHF
 

@@ -317,3 +317,44 @@ func TestApplyMetadataStoresExternalIDsAndSources(t *testing.T) {
 		t.Fatalf("metadata provenance missing: %+v", m)
 	}
 }
+
+
+func TestTMDBCredentialPrecedence(t *testing.T) {
+	oldBuiltin := BuiltinTMDBAPIKey
+	BuiltinTMDBAPIKey = "build-key"
+	defer func(){ BuiltinTMDBAPIKey = oldBuiltin }()
+	s := newTestServer(t)
+
+	key, source := s.tmdbCredential()
+	if key != "build-key" || source != "builtin" {
+		t.Fatalf("expected built-in credential, got key=%q source=%q", key, source)
+	}
+	s.cfg.TMDBAPIKey = "env-key"
+	key, source = s.tmdbCredential()
+	if key != "env-key" || source != "environment" {
+		t.Fatalf("expected environment credential, got key=%q source=%q", key, source)
+	}
+	s.mu.Lock()
+	s.st.Settings.TMDBAPIKey = "override-key"
+	s.mu.Unlock()
+	key, source = s.tmdbCredential()
+	if key != "override-key" || source != "override" {
+		t.Fatalf("expected user override, got key=%q source=%q", key, source)
+	}
+}
+
+func TestSettingsOnlyExposeCredentialSource(t *testing.T) {
+	oldBuiltin := BuiltinTMDBAPIKey
+	BuiltinTMDBAPIKey = "build-key"
+	defer func(){ BuiltinTMDBAPIKey = oldBuiltin }()
+	s := newTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	s.settings(rec, req)
+	if rec.Code != http.StatusOK { t.Fatalf("settings failed: %d", rec.Code) }
+	body := rec.Body.String()
+	if bytes.Contains([]byte(body), []byte("build-key")) { t.Fatal("settings leaked build credential") }
+	if !bytes.Contains([]byte(body), []byte(`"tmdb_credential_source":"builtin"`)) {
+		t.Fatalf("missing credential source status: %s", body)
+	}
+}

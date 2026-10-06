@@ -22,6 +22,10 @@ import (
 
 var Version = "0.1.1-dev"
 
+// BuiltinTMDBAPIKey stays empty in source. Official builds can inject the
+// BuddyFlix project credential at link time. Local overrides still win.
+var BuiltinTMDBAPIKey = ""
+
 type Config struct{ ListenAddr, DataDir, AdminUser, AdminPassword, TMDBAPIKey string }
 
 func ConfigFromEnv() Config {
@@ -138,7 +142,6 @@ func (s *Server) load() error {
 	s.st.Settings.AdminUser = s.cfg.AdminUser
 	h := sha256.Sum256([]byte(s.cfg.AdminPassword))
 	s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
-	s.st.Settings.TMDBAPIKey = s.cfg.TMDBAPIKey
 	if s.st.ServerID == "" {
 		raw := make([]byte, 12)
 		_, _ = rand.Read(raw)
@@ -172,10 +175,6 @@ func (s *Server) load() error {
 	if s.st.Settings.AdminPassHash == "" {
 		h := sha256.Sum256([]byte(s.cfg.AdminPassword))
 		s.st.Settings.AdminPassHash = hex.EncodeToString(h[:])
-		if err := s.saveLocked(); err != nil { return err }
-	}
-	if s.st.Settings.TMDBAPIKey == "" && s.cfg.TMDBAPIKey != "" {
-		s.st.Settings.TMDBAPIKey = s.cfg.TMDBAPIKey
 		if err := s.saveLocked(); err != nil { return err }
 	}
 	if s.st.NextLibraryID < 1 {
@@ -406,13 +405,17 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		s.mu.RLock()
+		_, tmdbSource := s.tmdbCredentialUnlocked()
 		out := map[string]any{
 			"server_name": s.st.Settings.ServerName,
 			"admin_user": s.st.Settings.AdminUser,
 			"server_id": s.st.ServerID,
 			"data_dir": s.cfg.DataDir,
 			"listen": s.cfg.ListenAddr,
-			"tmdb_configured": s.tmdbKeyUnlocked() != "",
+			"tmdb_configured": tmdbSource != "missing",
+			"tmdb_credential_source": tmdbSource,
+			"tmdb_builtin": tmdbSource == "builtin",
+			"tmdb_override": strings.TrimSpace(s.st.Settings.TMDBAPIKey) != "",
 		}
 		s.mu.RUnlock()
 		jsonOut(w, out)
@@ -906,7 +909,12 @@ func (s *Server) metadataSearch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) metadataProviders(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" { jsonErr(w, 405, "method not allowed"); return }
 	engine := s.metadataEngine()
-	jsonOut(w, engine.Status())
+	status := engine.Status()
+	_, source := s.tmdbCredential()
+	for i := range status {
+		if status[i].Name == "tmdb" { status[i].CredentialSource = source }
+	}
+	jsonOut(w, status)
 }
 
 func mediaHasMetadata(m Media) bool {
@@ -1169,15 +1177,27 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Ranges", "bytes")
 	http.ServeContent(w, r, filepath.Base(p), st.ModTime(), f)
 }
+func (s *Server) tmdbCredentialUnlocked() (string, string) {
+	if key := strings.TrimSpace(s.st.Settings.TMDBAPIKey); key != "" { return key, "override" }
+	if key := strings.TrimSpace(s.cfg.TMDBAPIKey); key != "" { return key, "environment" }
+	if key := strings.TrimSpace(BuiltinTMDBAPIKey); key != "" { return key, "builtin" }
+	return "", "missing"
+}
+
+func (s *Server) tmdbCredential() (string, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tmdbCredentialUnlocked()
+}
+
 func (s *Server) tmdbKeyUnlocked() string {
-	if s.st.Settings.TMDBAPIKey != "" { return s.st.Settings.TMDBAPIKey }
-	return s.cfg.TMDBAPIKey
+	key, _ := s.tmdbCredentialUnlocked()
+	return key
 }
 
 func (s *Server) tmdbKey() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.tmdbKeyUnlocked()
+	key, _ := s.tmdbCredential()
+	return key
 }
 
 func (s *Server) metadataEngine() MetadataEngine {
