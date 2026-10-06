@@ -622,3 +622,97 @@ func TestTVDBRefineCandidatesAddsGermanTitle(t *testing.T) {
 		t.Fatalf("refined German title should auto-match: confidence=%d auto=%v ok=%v", confidence, auto, ok)
 	}
 }
+
+
+func TestFreshInstallCreatesDefaultProfile(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.st.Profiles) != 1 {
+		t.Fatalf("expected one default profile, got %+v", s.st.Profiles)
+	}
+	if s.st.Profiles[0].Name != "Hauptprofil" || s.st.Profiles[0].ID != 1 {
+		t.Fatalf("unexpected default profile: %+v", s.st.Profiles[0])
+	}
+	if s.st.NextProfileID != 2 {
+		t.Fatalf("expected next profile id 2, got %d", s.st.NextProfileID)
+	}
+}
+
+func TestProfilesKeepWatchProgressSeparate(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{{ID:1, Title:"Movie"}}
+	s.st.NextMediaID = 2
+	s.st.Profiles = append(s.st.Profiles, Profile{ID:2, Name:"Gast", Avatar:"🎬"})
+	s.st.NextProfileID = 3
+	s.st.ProfileProgress[2] = map[int64]Progress{}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/progress", bytes.NewBufferString(`{"media_id":1,"Position":25,"Duration":100}`))
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"2"})
+	rec := httptest.NewRecorder()
+	s.progress(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("progress failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media?id=1", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"2"})
+	rec = httptest.NewRecorder()
+	s.media(rec, req)
+	var guest []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &guest); err != nil { t.Fatal(err) }
+	if len(guest) != 1 || guest[0].Progress != 25 {
+		t.Fatalf("guest progress missing: %+v", guest)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media?id=1", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"1"})
+	rec = httptest.NewRecorder()
+	s.media(rec, req)
+	var main []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &main); err != nil { t.Fatal(err) }
+	if len(main) != 1 || main[0].Progress != 0 {
+		t.Fatalf("main profile should stay untouched: %+v", main)
+	}
+}
+
+func TestProfileCreateSelectAndDelete(t *testing.T) {
+	s := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/profiles", bytes.NewBufferString(`{"Name":"Patrick","Avatar":"🚀"}`))
+	rec := httptest.NewRecorder()
+	s.profiles(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile create failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var created Profile
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil { t.Fatal(err) }
+	if created.ID != 2 || created.Name != "Patrick" {
+		t.Fatalf("unexpected created profile: %+v", created)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/profiles/select", bytes.NewBufferString(`{"profile_id":2}`))
+	rec = httptest.NewRecorder()
+	s.selectProfile(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile select failed: %d %s", rec.Code, rec.Body.String())
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 || cookies[0].Name != "buddyflix_profile" || cookies[0].Value != "2" {
+		t.Fatalf("profile cookie missing: %+v", cookies)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/profiles?id=2", nil)
+	rec = httptest.NewRecorder()
+	s.profiles(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile delete failed: %d %s", rec.Code, rec.Body.String())
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.st.Profiles) != 1 {
+		t.Fatalf("profile was not deleted: %+v", s.st.Profiles)
+	}
+}
