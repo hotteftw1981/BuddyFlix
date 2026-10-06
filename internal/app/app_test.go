@@ -358,3 +358,95 @@ func TestSettingsOnlyExposeCredentialSource(t *testing.T) {
 		t.Fatalf("missing credential source status: %s", body)
 	}
 }
+
+
+func TestTVDBProviderSearchAndEnrich(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("login method: %s", r.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data": map[string]string{"token": "token-123"},
+		})
+	})
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer token-123" {
+			t.Fatalf("missing bearer token")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{
+			"id":              "movie-1",
+			"tvdb_id":         "123",
+			"name":            "Test Movie",
+			"name_translated": "Testfilm",
+			"year":            "2026",
+			"overviews":       map[string]string{"deu": "Deutsche Beschreibung"},
+			"image_url":       "https://img.example/poster.jpg",
+			"remote_ids":      []any{map[string]any{"id": "tt0123456", "sourceName": "IMDB"}},
+		}}})
+	})
+	mux.HandleFunc("/movies/123/extended", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+			"id":        123,
+			"name":      "Test Movie",
+			"year":      "2026",
+			"image":     "https://img.example/base.jpg",
+			"remoteIds": []any{map[string]any{"id": "tt0123456", "sourceName": "IMDB"}},
+			"artworks":  []any{map[string]any{"image": "https://img.example/back.jpg", "width": 1920, "height": 1080}},
+		}})
+	})
+	mux.HandleFunc("/movies/123/translations/deu", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]string{
+			"name": "Testfilm", "overview": "Lange deutsche Beschreibung",
+		}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	p := NewTVDBProvider("project-key")
+	p.baseURL = srv.URL
+	p.client = srv.Client()
+
+	results, err := p.SearchMovie("Testfilm", 2026)
+	if err != nil || len(results) != 1 {
+		t.Fatalf("search failed: %+v %v", results, err)
+	}
+	if results[0].Provider != "thetvdb" || results[0].ExternalIDs["imdb"] != "tt0123456" {
+		t.Fatalf("unexpected search result: %+v", results[0])
+	}
+
+	enriched, err := p.EnrichMovie(results[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enriched.Backdrop != "https://img.example/back.jpg" || enriched.Overview != "Lange deutsche Beschreibung" {
+		t.Fatalf("unexpected enriched result: %+v", enriched)
+	}
+}
+
+func TestTVDBCredentialPrecedence(t *testing.T) {
+	oldBuiltin := BuiltinTVDBAPIKey
+	BuiltinTVDBAPIKey = "tvdb-build-key"
+	defer func() { BuiltinTVDBAPIKey = oldBuiltin }()
+
+	s := newTestServer(t)
+	key, source := s.tvdbCredential()
+	if key != "tvdb-build-key" || source != "builtin" {
+		t.Fatalf("builtin: %q %q", key, source)
+	}
+
+	s.cfg.TVDBAPIKey = "tvdb-env-key"
+	key, source = s.tvdbCredential()
+	if key != "tvdb-env-key" || source != "environment" {
+		t.Fatalf("env: %q %q", key, source)
+	}
+
+	s.mu.Lock()
+	s.st.Settings.TVDBAPIKey = "tvdb-override"
+	s.mu.Unlock()
+	key, source = s.tvdbCredential()
+	if key != "tvdb-override" || source != "override" {
+		t.Fatalf("override: %q %q", key, source)
+	}
+}
