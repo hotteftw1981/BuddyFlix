@@ -177,6 +177,40 @@ func (p *TMDbProvider) EnrichMovie(candidate MetadataCandidate) (MetadataCandida
 	return candidate, nil
 }
 
+func cleanLocalMetadataTitle(title string) string {
+	parts := strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(title))
+	if len(parts) == 0 { return strings.TrimSpace(title) }
+
+	isReleaseToken := func(v string) bool {
+		v = strings.ToLower(strings.Trim(v, "[](){}.-_ "))
+		if v == "" { return false }
+		switch v {
+		case "2160p", "1080p", "720p", "576p", "480p", "4k", "uhd",
+			"bluray", "brrip", "bdrip", "webrip", "webdl", "web-dl", "web", "hdtv", "dvdrip", "hdrip", "remux",
+			"x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "10bit", "8bit",
+			"hdr", "hdr10", "hdr10plus", "dolbyvision", "dv",
+			"dts", "dtshd", "ac3", "eac3", "aac", "ddp", "truehd", "atmos", "flac",
+			"german", "deutsch", "dl", "dubbed", "subbed", "multi", "multilang", "internal",
+			"proper", "repack", "unrated", "extended", "directorscut", "retail":
+			return true
+		}
+		if strings.HasPrefix(v, "cd") || strings.HasPrefix(v, "disc") {
+			return len(v) > 2
+		}
+		return false
+	}
+
+	cut := len(parts)
+	for i, p := range parts {
+		if isReleaseToken(p) {
+			cut = i
+			break
+		}
+	}
+	if cut == 0 { return strings.TrimSpace(title) }
+	return strings.TrimSpace(strings.Join(parts[:cut], " "))
+}
+
 func normalizedTitle(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
@@ -213,6 +247,7 @@ func titleSimilarity(a, b string) int {
 }
 
 func candidateTitleScore(input string, r MetadataCandidate) (int, bool) {
+	input = cleanLocalMetadataTitle(input)
 	best := titleSimilarity(input, r.Title)
 	exact := normalizedTitle(r.Title) == normalizedTitle(input)
 	for _, alt := range r.AlternateTitles {
@@ -225,14 +260,16 @@ func candidateTitleScore(input string, r MetadataCandidate) (int, bool) {
 
 func chooseMetadataMatch(title string, year int, results []MetadataCandidate) (MetadataCandidate, int, bool, bool) {
 	if len(results) == 0 { return MetadataCandidate{}, 0, false, false }
+
 	exactCount := 0
 	for _, r := range results {
 		_, exact := candidateTitleScore(title, r)
 		if exact { exactCount++ }
 	}
 
-	best, bestScore, bestExact := results[0], -1, false
-	for _, r := range results {
+	bestIndex, bestScore, bestExact := 0, -1, false
+	scores := make([]int, len(results))
+	for i, r := range results {
 		score, exact := candidateTitleScore(title, r)
 		if year > 0 && r.Year > 0 {
 			if year == r.Year { score += 6 } else { score -= 14 }
@@ -240,14 +277,38 @@ func chooseMetadataMatch(title string, year int, results []MetadataCandidate) (M
 		if !exact && score > 94 { score = 94 }
 		if score > 100 { score = 100 }
 		if score < 0 { score = 0 }
+		scores[i] = score
 		if score > bestScore {
-			best, bestScore, bestExact = r, score, exact
+			bestIndex, bestScore, bestExact = i, score, exact
 		}
 	}
+
 	if bestScore < 55 { return MetadataCandidate{}, bestScore, false, false }
+	best := results[bestIndex]
+
+	secondScore := -1
+	for i, score := range scores {
+		if i != bestIndex && score > secondScore { secondScore = score }
+	}
+	margin := bestScore - secondScore
+	if secondScore < 0 { margin = bestScore }
+
 	auto := false
 	if bestExact {
-		if year > 0 { auto = best.Year == year } else { auto = exactCount == 1 }
+		if year > 0 {
+			auto = best.Year == year
+		} else {
+			auto = exactCount == 1
+		}
 	}
+
+	// If the local title is only slightly different (punctuation, release noise,
+	// spelling variant) but the year is identical and the winner is clearly
+	// ahead of all other candidates, accepting it is safer than making the user
+	// review hundreds of obvious matches.
+	if !auto && year > 0 && best.Year == year && bestScore >= 90 && margin >= 8 {
+		auto = true
+	}
+
 	return best, bestScore, auto, true
 }
