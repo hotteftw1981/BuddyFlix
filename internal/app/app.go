@@ -1052,6 +1052,17 @@ func (s *Server) runMetadataBulk(ids []int64, engine MetadataEngine) {
 		consecutiveErrors = 0
 
 		candidate, confidence, auto, hasCandidate := chooseMetadataMatch(item.Title, item.Year, results)
+
+		// Second-stage resolver: only spend extra API calls on ambiguous results.
+		// TheTVDB's search endpoint does not always include German translations,
+		// so fetch them for the top candidates before asking the user to review.
+		if !auto && len(results) > 0 {
+			if refined, refineErr := engine.RefineMovieCandidates(results); refineErr == nil {
+				results = refined
+				candidate, confidence, auto, hasCandidate = chooseMetadataMatch(item.Title, item.Year, results)
+			}
+		}
+
 		resultKind := "no_match"
 		if auto {
 			if enriched, enrichErr := engine.EnrichMovie(candidate); enrichErr == nil { candidate = enriched }
