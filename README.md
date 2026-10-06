@@ -52,18 +52,18 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - QNAP-/NAS-Systemordner werden beim Scan übersprungen
 - Scan-Diagnose mit Anzahl gefundener Mediendateien und übersprungener Systemordner
 - erweiterte Verwaltungsoberfläche
-- Unterstützung für ein zentrales BuddyFlix-TMDb-Projektcredential im Build
-- optionaler eigener TMDb-Key nur noch als Server-Override
+- Unterstützung für ein zentrales BuddyFlix-TheTVDB-Projektcredential im Build
+- optionaler eigener TheTVDB-Key nur noch als Server-Override
 - Medien manuell bearbeiten
 - Medienstatus gesehen / ungesehen
 - Wiedergabefortschritt zurücksetzen
 - Bereinigung verwaister Medieneinträge
-- TMDb-Suche mit auswählbaren Treffern
-- Übernahme eines gezielt ausgewählten TMDb-Treffers
-- automatische TMDb-Metadatenerkennung für komplette Bibliotheken
+- TheTVDB-Suche mit auswählbaren Treffern
+- Übernahme eines gezielt ausgewählten TheTVDB-Treffers
+- automatische TheTVDB-Metadatenerkennung für komplette Bibliotheken
 - konservative Auto-Zuordnung eindeutiger Treffer; unsichere Treffer landen in „Bitte prüfen“
 - provider-neutrale BuddyFlix Metadata Engine als Basis für weitere Metadatenquellen
-- persistente externe IDs (aktuell TMDb; IMDb/Wikidata werden bei TMDb-Details mitgespeichert, sofern vorhanden)
+- persistente externe IDs (TheTVDB und – sofern vorhanden – IMDb/TMDb)
 - Herkunftsangaben für übernommene Metadatenfelder
 - Client-/Discovery-Endpunkte für spätere Apps
 - dynamische Versionsanzeige im Frontend
@@ -92,7 +92,7 @@ Passwort: buddyflix
 
 ### develop / V0.1.1-dev
 
-Bei einer frischen Installation ist eine **Ersteinrichtung** vorgesehen. Dabei werden Servername, Admin-Benutzer und Passwort selbst vergeben. Ein eigener TMDb-Key gehört nicht mehr zur normalen Ersteinrichtung. BuddyFlix kann stattdessen ein zentrales Projektcredential im Build verwenden; ein eigener Key bleibt nur als optionaler Override möglich.
+Bei einer frischen Installation ist eine **Ersteinrichtung** vorgesehen. Dabei werden Servername, Admin-Benutzer und Passwort selbst vergeben. Ein eigener Provider-Key gehört nicht zur normalen Ersteinrichtung. BuddyFlix kann stattdessen ein zentrales TheTVDB-Projektcredential im Build verwenden; ein eigener TheTVDB-Key bleibt nur als optionaler Override möglich.
 
 ---
 
@@ -207,6 +207,16 @@ Bitte derzeit bevorzugt nur im internen Netzwerk verwenden.
 
 ---
 
+### Metadatenquelle
+
+BuddyFlix verwendet im Entwicklungszweig **TheTVDB** als primären Metadatenprovider.
+
+Metadata provided by [TheTVDB](https://thetvdb.com). Please consider adding missing information or subscribing.
+
+TMDb bleibt vorerst nur als technische Fallback-Implementierung im Code und ist nicht der primäre BuddyFlix-Provider.
+
+---
+
 ## 🛠️ Technik
 
 Aktuell:
@@ -266,13 +276,13 @@ Aktueller Entwicklungszweig. Noch nicht als stabil veröffentlicht.
 - dynamische Dev-Buildnummern
 - installierbare QNAP-ARMHF-Dev-QPKGs über GitHub Actions
 - neues BuddyFlix-Branding mit Web-Logo und QNAP-App-Icon
-- TMDb-Konfiguration
+- TheTVDB-Konfiguration
 - Medieneditor
 - Medienstatus und Bereinigung
-- auswählbare TMDb-Treffer
-- automatische TMDb-Metadatenläufe mit Prüfliste für unsichere Treffer
+- auswählbare TheTVDB-Treffer
+- automatische TheTVDB-Metadatenläufe mit Prüfliste für unsichere Treffer
 - provider-neutrale Metadata Engine mit externen IDs und Quellenherkunft
-- Build-Unterstützung für ein zentrales BuddyFlix-TMDb-Projektcredential; Nutzer-Key nur noch optionaler Override
+- Build-Unterstützung für ein zentrales BuddyFlix-TheTVDB-Projektcredential; Nutzer-Key nur noch optionaler Override
 - erste Client-/Discovery-API
 - CI für Go-Tests, JavaScript-Syntaxcheck, AMD64 und ARMHF
 
