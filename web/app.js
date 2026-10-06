@@ -1,4 +1,4 @@
-const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',heroIndex=0;
+const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',movieView='posters',heroIndex=0;
 async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});if(r.status===401){loginView();throw new Error('unauthorized')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Fehler');return j}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function toast(t){let x=document.createElement('div');x.className='toast';x.textContent=t;document.body.append(x);setTimeout(()=>x.remove(),2500)}
@@ -8,6 +8,21 @@ function shell(){document.querySelector('#app').innerHTML=`<div class="shell the
 async function boot(){try{const setup=await fetch('/api/setup/status').then(r=>r.json());if(!setup.setup_done){setupView(setup);return}state.system=await api('/api/system');state.media=await api('/api/media');state.libs=await api('/api/libraries');shell();renderHome()}catch(e){if(e.message!=='unauthorized')loginView()}}
 async function view(v,b){document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));if(v!=='home')stopHeroRotation();try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
 function card(m){let pct=mediaProgress(m),resumable=m.position>20&&m.duration>0&&pct<95;return `<article class="card theater-card" onclick="detail(${m.id})"><div class="poster">${m.poster?`<img loading="lazy" src="${esc(m.poster)}" alt="">`:`<div class="placeholder"><span>▶</span><small>Kein Poster</small></div>`}<div class="poster-shade"></div><div class="poster-info"><strong>${esc(m.title)}</strong><span>${m.year||'Film'}${resumable?` · ${Math.round(pct)}%`:m.progress>=95?' · gesehen':''}</span></div><button class="poster-play" aria-label="${resumable?'Fortsetzen':'Abspielen'}" onclick="event.stopPropagation();play(${m.id},'${resumable?'resume':'start'}')">▶</button>${m.progress>0&&m.progress<95?`<div class="progress"><i style="width:${Math.min(100,m.progress)}%"></i></div>`:''}${m.progress>=95?'<span class="watched-mark">✓</span>':''}</div></article>`}
+
+function landscapeCard(m,index=0){
+  let pct=mediaProgress(m),resumable=m.position>20&&m.duration>0&&pct<95;
+  return `<article class="cine-card ${index%7===0?'cine-card-wide':''}" onclick="detail(${m.id})">
+    <div class="cine-bg" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"></div>
+    <div class="cine-shade"></div>
+    <div class="cine-copy">
+      <div class="cine-topline"><span>${m.year||'Film'}</span>${resumable?`<b>${Math.round(pct)}%</b>`:m.progress>=95?'<b>✓ gesehen</b>':''}</div>
+      <h3>${esc(m.title)}</h3>
+      <p>${esc(m.overview||'Direkt aus deiner BuddyFlix-Bibliothek.')}</p>
+      <div class="cine-actions"><button onclick="event.stopPropagation();play(${m.id},'${resumable?'resume':'start'}')">▶ ${resumable?'Fortsetzen':'Ansehen'}</button><span>ⓘ Details</span></div>
+    </div>
+    ${resumable?`<div class="cine-progress"><i style="width:${pct}%"></i></div>`:''}
+  </article>`
+}
 
 function homeSection(title,items,subtitle=''){if(!items.length)return '';return `<section class="home-section theater-shelf"><div class="rowhead"><div><div class="shelf-kicker">${esc(subtitle||'BUDDYFLIX')}</div><h2>${esc(title)}</h2></div><span class="rail-count">${items.length}</span></div><div class="media-rail">${items.map(card).join('')}</div></section>`}
 
@@ -84,6 +99,7 @@ function filteredMovies(){
 function setMovieFilter(filter){movieFilter=filter;renderMovies()}
 function setMovieSort(sort){movieSort=sort;renderMovies()}
 function setMovieDecade(decade){movieDecade=decade;renderMovies()}
+function setMovieView(view){movieView=view;renderMovies()}
 function renderMovies(){
   if(!$('#content'))return;
   let items=filteredMovies(),watched=state.media.filter(m=>mediaProgress(m)>=95).length,continuing=state.media.filter(m=>m.progress>1&&m.progress<95).length;
@@ -97,11 +113,16 @@ function renderMovies(){
     </div>
     <div class="library-toolbar">
       <div class="movie-filterbar">${filters.map(([id,label])=>`<button class="${movieFilter===id?'active':''}" onclick="setMovieFilter('${id}')">${label}</button>`).join('')}</div>
-      <div class="sort-group"><span>Sortieren</span><button class="${movieSort==='recent'?'active':''}" onclick="setMovieSort('recent')">Neu</button><button class="${movieSort==='title'?'active':''}" onclick="setMovieSort('title')">A–Z</button><button class="${movieSort==='year'?'active':''}" onclick="setMovieSort('year')">Jahr</button></div>
+      <div class="library-tools">
+        <div class="view-group"><span>Ansicht</span><button class="${movieView==='posters'?'active':''}" onclick="setMovieView('posters')" title="Posterwand">▦</button><button class="${movieView==='cinema'?'active':''}" onclick="setMovieView('cinema')" title="CineWall">▰</button></div>
+        <div class="sort-group"><span>Sortieren</span><button class="${movieSort==='recent'?'active':''}" onclick="setMovieSort('recent')">Neu</button><button class="${movieSort==='title'?'active':''}" onclick="setMovieSort('title')">A–Z</button><button class="${movieSort==='year'?'active':''}" onclick="setMovieSort('year')">Jahr</button></div>
+      </div>
     </div>
     <div class="decade-bar"><button class="${movieDecade==='all'?'active':''}" onclick="setMovieDecade('all')">Alle Jahre</button>${decades.map(d=>`<button class="${String(movieDecade)===String(d)?'active':''}" onclick="setMovieDecade('${d}')">${String(d).slice(2)}er</button>`).join('')}</div>
-    <div class="library-resultline"><strong>${items.length}</strong><span>Treffer in dieser Ansicht</span></div>
-    <div class="movie-grid theater-grid">${items.map(card).join('')||'<div class="empty movies-empty">In dieser Ansicht gibt es gerade nichts zu sehen.</div>'}</div>
+    <div class="library-resultline"><strong>${items.length}</strong><span>Treffer in dieser Ansicht</span><em>${movieView==='cinema'?'CineWall':'Posterwand'}</em></div>
+    ${movieView==='cinema'
+      ? `<div class="cinewall">${items.map((m,i)=>landscapeCard(m,i)).join('')||'<div class="empty movies-empty">In dieser Ansicht gibt es gerade nichts zu sehen.</div>'}</div>`
+      : `<div class="movie-grid theater-grid">${items.map(card).join('')||'<div class="empty movies-empty">In dieser Ansicht gibt es gerade nichts zu sehen.</div>'}</div>`}
   </section>`
 }
 
