@@ -159,6 +159,7 @@ func (p *TVDBProvider) searchMovieOnce(title string, year int) ([]MetadataCandid
 			Year           string            `json:"year"`
 			Overview       string            `json:"overview"`
 			Overviews      map[string]string `json:"overviews"`
+			Translations   map[string]string `json:"translations"`
 			ImageURL       string            `json:"image_url"`
 			Poster         string            `json:"poster"`
 			RemoteIDs      []struct {
@@ -175,7 +176,8 @@ func (p *TVDBProvider) searchMovieOnce(title string, year int) ([]MetadataCandid
 		if id == "" { id = strings.TrimSpace(z.ID) }
 		if id == "" { continue }
 
-		name := strings.TrimSpace(z.NameTranslated)
+		name := strings.TrimSpace(z.Translations["deu"])
+		if name == "" { name = strings.TrimSpace(z.NameTranslated) }
 		if name == "" { name = strings.TrimSpace(z.Name) }
 		if name == "" { name = strings.TrimSpace(z.Title) }
 		y, _ := strconv.Atoi(strings.TrimSpace(z.Year))
@@ -195,10 +197,14 @@ func (p *TVDBProvider) searchMovieOnce(title string, year int) ([]MetadataCandid
 			}
 		}
 
-		alts := make([]string, 0, len(z.Aliases)+2)
+		alts := make([]string, 0, len(z.Aliases)+len(z.Translations)+2)
 		for _, a := range z.Aliases {
 			a = strings.TrimSpace(a)
 			if a != "" && !strings.EqualFold(a, name) { alts = append(alts, a) }
+		}
+		for _, translated := range z.Translations {
+			translated = strings.TrimSpace(translated)
+			if translated != "" && !strings.EqualFold(translated, name) { alts = append(alts, translated) }
 		}
 		if z.Name != "" && !strings.EqualFold(z.Name, name) { alts = append(alts, strings.TrimSpace(z.Name)) }
 		if z.Title != "" && !strings.EqualFold(z.Title, name) { alts = append(alts, strings.TrimSpace(z.Title)) }
