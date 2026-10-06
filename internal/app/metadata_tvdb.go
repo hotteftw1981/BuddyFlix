@@ -217,28 +217,125 @@ func (p *TVDBProvider) searchMovieOnce(title string, year int) ([]MetadataCandid
 	return out, nil
 }
 
+func uniqueStrings(items []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(strings.Join(strings.Fields(item), " "))
+		if item == "" { continue }
+		key := strings.ToLower(item)
+		if seen[key] { continue }
+		seen[key] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func germanSearchVariants(title string) []string {
+	cleaned := cleanMetadataQuery(title)
+	punct := strings.NewReplacer(
+		":", " ",
+		" - ", " ",
+		" – ", " ",
+		" — ", " ",
+		"&", " und ",
+		"'", " ",
+		"’", " ",
+	).Replace(cleaned)
+
+	short := cleaned
+	for _, sep := range []string{":", " - ", " – ", " — "} {
+		if i := strings.Index(short, sep); i > 3 {
+			short = strings.TrimSpace(short[:i])
+			break
+		}
+	}
+
+	deASCII := cleaned
+	if !strings.ContainsAny(deASCII, "äöüÄÖÜ") {
+		deASCII = strings.NewReplacer(
+			"ae", "ä", "Ae", "Ä", "AE", "Ä",
+			"oe", "ö", "Oe", "Ö", "OE", "Ö",
+			"ue", "ü", "Ue", "Ü", "UE", "Ü",
+		).Replace(deASCII)
+	}
+
+	ascii := strings.NewReplacer(
+		"ä", "ae", "ö", "oe", "ü", "ue", "Ä", "Ae", "Ö", "Oe", "Ü", "Ue", "ß", "ss",
+	).Replace(cleaned)
+
+	return uniqueStrings([]string{strings.TrimSpace(title), cleaned, punct, short, deASCII, ascii})
+}
+
+func (p *TVDBProvider) germanTranslation(id string) (string, string, error) {
+	var tr struct {
+		Data struct {
+			Name     string `json:"name"`
+			Overview string `json:"overview"`
+		} `json:"data"`
+	}
+	if err := p.get("/movies/"+url.PathEscape(id)+"/translations/deu", &tr); err != nil {
+		return "", "", err
+	}
+	return strings.TrimSpace(tr.Data.Name), strings.TrimSpace(tr.Data.Overview), nil
+}
+
+func (p *TVDBProvider) RefineMovieCandidates(candidates []MetadataCandidate) ([]MetadataCandidate, error) {
+	limit := len(candidates)
+	if limit > 5 { limit = 5 }
+	out := append([]MetadataCandidate(nil), candidates...)
+	var lastErr error
+
+	for i := 0; i < limit; i++ {
+		id := strings.TrimSpace(out[i].ProviderID)
+		if id == "" { continue }
+		name, overview, err := p.germanTranslation(id)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if name != "" {
+			found := strings.EqualFold(name, out[i].Title)
+			for _, alt := range out[i].AlternateTitles {
+				if strings.EqualFold(name, alt) { found = true; break }
+			}
+			if !found { out[i].AlternateTitles = append(out[i].AlternateTitles, name) }
+		}
+		if overview != "" && out[i].Overview == "" { out[i].Overview = overview }
+	}
+
+	if lastErr != nil && len(out) == 0 { return candidates, lastErr }
+	return out, nil
+}
+
 func (p *TVDBProvider) SearchMovie(title string, year int) ([]MetadataCandidate, error) {
-	original := strings.TrimSpace(title)
-	cleaned := cleanMetadataQuery(original)
+	variants := germanSearchVariants(title)
+	var lastErr error
 
-	results, err := p.searchMovieOnce(original, year)
-	if err != nil { return nil, err }
-	if len(results) > 0 { return results, nil }
-
-	if cleaned != "" && !strings.EqualFold(cleaned, original) {
-		results, err = p.searchMovieOnce(cleaned, year)
-		if err != nil { return nil, err }
+	for _, query := range variants {
+		results, err := p.searchMovieOnce(query, year)
+		if err != nil {
+			lastErr = err
+			continue
+		}
 		if len(results) > 0 { return results, nil }
 	}
 
-	// Year filters can be too strict when filenames contain a release year that
-	// differs from TheTVDB's primary year. Retry once without it.
-	fallbackTitle := original
-	if cleaned != "" { fallbackTitle = cleaned }
 	if year > 0 {
-		return p.searchMovieOnce(fallbackTitle, 0)
+		limit := len(variants)
+		if limit > 3 { limit = 3 }
+		for _, query := range variants[:limit] {
+			results, err := p.searchMovieOnce(query, 0)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if len(results) > 0 { return results, nil }
+		}
 	}
-	return results, nil
+
+	if lastErr != nil { return nil, lastErr }
+	return []MetadataCandidate{}, nil
 }
 
 func (p *TVDBProvider) EnrichMovie(candidate MetadataCandidate) (MetadataCandidate, error) {
@@ -321,19 +418,9 @@ func (p *TVDBProvider) EnrichMovie(candidate MetadataCandidate) (MetadataCandida
 		}
 	}
 
-	var tr struct {
-		Data struct {
-			Name     string `json:"name"`
-			Overview string `json:"overview"`
-		} `json:"data"`
-	}
-	if err := p.get("/movies/"+url.PathEscape(id)+"/translations/deu", &tr); err == nil {
-		if strings.TrimSpace(tr.Data.Name) != "" {
-			candidate.Title = strings.TrimSpace(tr.Data.Name)
-		}
-		if strings.TrimSpace(tr.Data.Overview) != "" {
-			candidate.Overview = strings.TrimSpace(tr.Data.Overview)
-		}
+	if name, overview, err := p.germanTranslation(id); err == nil {
+		if name != "" { candidate.Title = name }
+		if overview != "" { candidate.Overview = overview }
 	}
 
 	return candidate, nil
