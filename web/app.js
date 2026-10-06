@@ -1,15 +1,17 @@
-const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null;let movieFilter='all';
+const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null};let metadataPollTimer=null;let movieFilter='all',movieSort='recent';
 async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});if(r.status===401){loginView();throw new Error('unauthorized')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Fehler');return j}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function toast(t){let x=document.createElement('div');x.className='toast';x.textContent=t;document.body.append(x);setTimeout(()=>x.remove(),2500)}
 function setupView(info={}){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card setup-card" id="setup"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><div class="setup-step">ERSTEINRICHTUNG</div><h1>Mach es zu deinem Server.</h1><div class="muted">Einmal kurz einrichten, danach gehört die Standard-Anmeldung der Vergangenheit an.</div><label class="field">Servername<input name="server_name" value="${esc(info.server_name||'BuddyFlix')}"></label><label class="field">Admin-Benutzer<input name="admin_user" value="admin" autocomplete="username"></label><label class="field">Admin-Passwort<input name="password" type="password" minlength="8" autocomplete="new-password"></label><label class="field">Passwort wiederholen<input name="repeat" type="password" minlength="8" autocomplete="new-password"></label><div class="notice">Metadatenanbieter werden von BuddyFlix verwaltet. Für die normale Einrichtung ist kein eigener API-Key vorgesehen.</div><button class="btn primary">BuddyFlix einrichten</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#setup').onsubmit=async e=>{e.preventDefault();if(e.target.password.value!==e.target.repeat.value){$('#err').textContent='Die Passwörter stimmen nicht überein.';return}try{await api('/api/setup',{method:'POST',body:JSON.stringify({server_name:e.target.server_name.value,admin_user:e.target.admin_user.value,password:e.target.password.value})});toast('Einrichtung abgeschlossen');loginView()}catch(x){$('#err').textContent=x.message}}}
 function loginView(){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card" id="login"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><h1>Willkommen zurück.</h1><div class="muted">Dein schlanker Media Server.</div><label class="field">Benutzer<input name="u" placeholder="Benutzername" autocomplete="username"></label><label class="field">Passwort<input name="p" type="password" autocomplete="current-password"></label><button class="btn primary">Anmelden</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#login').onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{method:'POST',body:JSON.stringify({Username:e.target.u.value,Password:e.target.p.value})});await boot()}catch(x){$('#err').textContent=x.message}}}
-function shell(){document.querySelector('#app').innerHTML=`<div class="shell"><aside class="side"><div class="side-brand-wrap"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><div class="side-caption">DEIN KINO. DEIN SERVER.</div></div><nav class="nav"><div class="nav-label">BIBLIOTHEK</div><button data-v="home" class="active"><span class="nav-icon">⌂</span><span>Startseite</span></button><button data-v="movies"><span class="nav-icon">▣</span><span>Filme</span></button><div class="nav-label nav-label-gap">SYSTEM</div><button data-v="admin"><span class="nav-icon">⚙</span><span>Verwaltung</span></button></nav><div class="sidefoot"><span class="side-server-dot"></span><strong>${esc(state.system?.server_name||'BuddyFlix')}</strong><small>v${esc(state.system?.version||'dev')} · ARMHF-first</small></div></aside><main class="main"><header class="top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Filme, Titel, Klassiker…"></div><span class="status"><i class="dot"></i> Server online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></header><div id="content" class="content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';renderMovies()},180)}}
+function shell(){document.querySelector('#app').innerHTML=`<div class="shell theater-shell"><aside class="side side-rail"><div class="rail-logo"><img src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><nav class="nav rail-nav"><button data-v="home" class="active" title="Startseite"><span class="nav-icon">⌂</span><span class="rail-label">Start</span></button><button data-v="movies" title="Filme"><span class="nav-icon">▣</span><span class="rail-label">Filme</span></button><button data-v="admin" title="Verwaltung"><span class="nav-icon">⚙</span><span class="rail-label">Admin</span></button></nav><div class="rail-bottom"><span class="side-server-dot"></span><span class="rail-version">v${esc(state.system?.version||'dev')}</span></div></aside><main class="main theater-main"><header class="top theater-top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Was willst du sehen?"></div><div class="top-actions"><span class="status"><i class="dot"></i> Online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></div></header><div id="content" class="content theater-content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';renderMovies()},180)}}
 async function boot(){try{const setup=await fetch('/api/setup/status').then(r=>r.json());if(!setup.setup_done){setupView(setup);return}state.system=await api('/api/system');state.media=await api('/api/media');state.libs=await api('/api/libraries');shell();renderHome()}catch(e){if(e.message!=='unauthorized')loginView()}}
 async function view(v,b){document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
-function card(m){let pct=mediaProgress(m),resumable=m.position>20&&m.duration>0&&pct<95;return `<article class="card" onclick="detail(${m.id})"><div class="poster">${m.poster?`<img loading="lazy" src="${esc(m.poster)}" alt="">`:`<div class="placeholder"><span>▶</span><small>Kein Poster</small></div>`}<div class="poster-shade"></div><button class="poster-play" aria-label="${resumable?'Fortsetzen':'Abspielen'}" onclick="event.stopPropagation();play(${m.id},'${resumable?'resume':'start'}')">▶</button>${m.progress>0&&m.progress<95?`<div class="progress"><i style="width:${Math.min(100,m.progress)}%"></i></div>`:''}${m.progress>=95?'<span class="watched-mark">✓</span>':''}</div><div class="card-title">${esc(m.title)}</div><div class="card-meta"><span>${m.year||'Film'}</span>${resumable?`<span>${Math.round(pct)}%</span>`:m.progress>=95?'<span>Gesehen</span>':''}</div></article>`}
+function card(m){let pct=mediaProgress(m),resumable=m.position>20&&m.duration>0&&pct<95;return `<article class="card theater-card" onclick="detail(${m.id})"><div class="poster">${m.poster?`<img loading="lazy" src="${esc(m.poster)}" alt="">`:`<div class="placeholder"><span>▶</span><small>Kein Poster</small></div>`}<div class="poster-shade"></div><div class="poster-info"><strong>${esc(m.title)}</strong><span>${m.year||'Film'}${resumable?` · ${Math.round(pct)}%`:m.progress>=95?' · gesehen':''}</span></div><button class="poster-play" aria-label="${resumable?'Fortsetzen':'Abspielen'}" onclick="event.stopPropagation();play(${m.id},'${resumable?'resume':'start'}')">▶</button>${m.progress>0&&m.progress<95?`<div class="progress"><i style="width:${Math.min(100,m.progress)}%"></i></div>`:''}${m.progress>=95?'<span class="watched-mark">✓</span>':''}</div></article>`}
 
-function homeSection(title,items,subtitle=''){if(!items.length)return '';return `<section class="home-section"><div class="rowhead"><div><h2>${esc(title)}</h2>${subtitle?`<div class="row-subtitle">${esc(subtitle)}</div>`:''}</div><span class="rail-count">${items.length}</span></div><div class="media-rail">${items.map(card).join('')}</div></section>`}
+function homeSection(title,items,subtitle=''){if(!items.length)return '';return `<section class="home-section theater-shelf"><div class="rowhead"><div><div class="shelf-kicker">${esc(subtitle||'BUDDYFLIX')}</div><h2>${esc(title)}</h2></div><span class="rail-count">${items.length}</span></div><div class="media-rail">${items.map(card).join('')}</div></section>`}
+
+function miniPoster(m){if(!m)return '';return `<button class="hero-mini" onclick="detail(${m.id})" title="${esc(m.title)}">${m.poster?`<img src="${esc(m.poster)}" alt="">`:'<span>▶</span>'}<i>${esc(m.title)}</i></button>`}
 
 function pickSomething(){let pool=state.media.filter(m=>!m.missing);if(!pool.length){toast('Noch keine Filme vorhanden');return}let unseen=pool.filter(m=>mediaProgress(m)<1),choices=unseen.length?unseen:pool,m=choices[Math.floor(Math.random()*choices.length)];detail(m.id)}
 
@@ -20,54 +22,64 @@ function renderHome(){
   let hero=continueItems.find(m=>m.backdrop)||state.media.find(m=>m.backdrop)||state.media.find(m=>m.poster)||state.media[0];
   let heroPct=hero?mediaProgress(hero):0,heroResume=hero&&hero.position>20&&hero.duration>0&&heroPct<95;
   let watchedCount=state.media.filter(m=>mediaProgress(m)>=95).length;
+  let spotlight=state.media.filter(m=>m.id!==hero?.id&&m.poster).slice(0,3);
   $('#content').innerHTML=`
-    ${hero?`<section class="hero hero-cinematic hero-stage">
-      <div class="hero-bg" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div>
-      <div class="hero-vignette"></div>
-      <div class="hero-stage-inner">
-        ${hero.poster?`<div class="hero-poster" onclick="detail(${hero.id})"><img src="${esc(hero.poster)}" alt=""><span>DETAILS</span></div>`:''}
-        <div class="hero-copy">
-          <div class="hero-kicker"><span></span> BUDDYFLIX PREMIERE</div>
-          <h1>${esc(hero.title)}</h1>
-          <div class="hero-meta"><span>${hero.year||'Film'}</span>${heroResume?`<span>${Math.round(heroPct)}% angesehen</span>`:hero.progress>=95?'<span>✓ Gesehen</span>':''}<span>${state.media.length} Filme</span></div>
-          <p>${esc(hero.overview||'Deine eigene Filmbibliothek. Direkt vom NAS, ohne Umwege und ohne Ballast.')}</p>
-          <div class="hero-actions">
-            <button class="btn primary hero-play" onclick="play(${hero.id},'${heroResume?'resume':'start'}')">▶ ${heroResume?'Fortsetzen':'Abspielen'}</button>
-            <button class="btn hero-info" onclick="detail(${hero.id})">ⓘ Mehr Infos</button>
-            <button class="btn hero-random" onclick="pickSomething()">⤨ Überrasch mich</button>
-          </div>
-          ${heroResume?`<div class="hero-progress"><i style="width:${heroPct}%"></i></div>`:''}
+    ${hero?`<section class="immersive-hero">
+      <div class="immersive-bg" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div>
+      <div class="immersive-fade"></div>
+      <div class="immersive-grain"></div>
+      <div class="immersive-copy">
+        <div class="immersive-eyebrow"><span>BUDDYFLIX ORIGINAL PICK</span><b>${hero.year||'Film'}</b></div>
+        <h1>${esc(hero.title)}</h1>
+        <p>${esc(hero.overview||'Deine eigene Filmbibliothek. Direkt vom NAS, ohne Umwege und ohne Ballast.')}</p>
+        <div class="immersive-actions">
+          <button class="btn primary mega-play" onclick="play(${hero.id},'${heroResume?'resume':'start'}')">▶ ${heroResume?'Fortsetzen':'Jetzt ansehen'}</button>
+          <button class="round-action" onclick="detail(${hero.id})" title="Details">ⓘ</button>
+          <button class="round-action" onclick="pickSomething()" title="Überrasch mich">⤨</button>
         </div>
+        ${heroResume?`<div class="immersive-progress"><div><span>Weiter bei ${fmtTime(hero.position)}</span><b>${Math.round(heroPct)}%</b></div><i><em style="width:${heroPct}%"></em></i></div>`:''}
       </div>
-      <div class="hero-library-stats"><span><b>${state.media.length}</b> Filme</span><span><b>${watchedCount}</b> gesehen</span><span><b>${continueItems.length}</b> angefangen</span></div>
+      <div class="hero-stack"><div class="hero-stack-label">ALS NÄCHSTES</div>${spotlight.map(miniPoster).join('')}</div>
+      <div class="immersive-stats"><span><b>${state.media.length}</b><small>Filme</small></span><span><b>${watchedCount}</b><small>gesehen</small></span><span><b>${continueItems.length}</b><small>offen</small></span></div>
     </section>`:''}
-    ${homeSection('Weiterschauen',continueItems,'Genau da weitermachen, wo du aufgehört hast')}
-    ${homeSection('Neu im Regal',newest,'Frisch in deiner BuddyFlix-Bibliothek')}
-    ${homeSection('Noch ungesehen',unseen,'Vielleicht ist heute Abend ja was dabei')}
+    <div class="shelf-zone">
+      ${homeSection('Weiterschauen',continueItems,'DEIN FORTSCHRITT')}
+      ${homeSection('Frisch eingetroffen',newest,'NEU IN DEINER SAMMLUNG')}
+      ${homeSection('Noch ungesehen',unseen,'NOCH NICHT ENTDECKT')}
+    </div>
     ${!state.media.length?'<div class="empty home-empty">Noch keine Medien. Lege unter Verwaltung eine Bibliothek an.</div>':''}
   `
 }
 
 function filteredMovies(){
-  if(movieFilter==='unseen')return state.media.filter(m=>mediaProgress(m)<1);
-  if(movieFilter==='continue')return state.media.filter(m=>m.progress>1&&m.progress<95);
-  if(movieFilter==='watched')return state.media.filter(m=>mediaProgress(m)>=95);
-  return state.media
+  let items=state.media.slice();
+  if(movieFilter==='unseen')items=items.filter(m=>mediaProgress(m)<1);
+  if(movieFilter==='continue')items=items.filter(m=>m.progress>1&&m.progress<95);
+  if(movieFilter==='watched')items=items.filter(m=>mediaProgress(m)>=95);
+  if(movieSort==='title')items.sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''),'de'));
+  if(movieSort==='year')items.sort((a,b)=>(b.year||0)-(a.year||0));
+  return items
 }
 function setMovieFilter(filter){movieFilter=filter;renderMovies()}
+function setMovieSort(sort){movieSort=sort;renderMovies()}
 function renderMovies(){
   if(!$('#content'))return;
   let items=filteredMovies(),watched=state.media.filter(m=>mediaProgress(m)>=95).length,continuing=state.media.filter(m=>m.progress>1&&m.progress<95).length;
   let filters=[['all','Alle'],['unseen','Ungesehen'],['continue','Weiterschauen'],['watched','Gesehen']];
-  $('#content').innerHTML=`<section class="movies-page">
+  $('#content').innerHTML=`<section class="movies-page theater-library">
+    <div class="library-aurora"></div>
     <div class="movies-heading">
-      <div><div class="section-kicker">DEINE BIBLIOTHEK</div><h1>Filme</h1><p>${state.media.length} Titel · ${watched} gesehen · ${continuing} angefangen</p></div>
-      <button class="btn primary surprise-btn" onclick="pickSomething()">⤨ Film auslosen</button>
+      <div><div class="section-kicker">BUDDYFLIX ARCHIV</div><h1>Deine Filme.</h1><p>${state.media.length} Titel auf deinem Server · ${watched} gesehen · ${continuing} angefangen</p></div>
+      <button class="btn primary surprise-btn" onclick="pickSomething()">⤨ Überrasch mich</button>
     </div>
-    <div class="movie-filterbar">${filters.map(([id,label])=>`<button class="${movieFilter===id?'active':''}" onclick="setMovieFilter('${id}')">${label}</button>`).join('')}</div>
-    <div class="movie-grid">${items.map(card).join('')||'<div class="empty movies-empty">In dieser Ansicht gibt es gerade nichts zu sehen.</div>'}</div>
+    <div class="library-toolbar">
+      <div class="movie-filterbar">${filters.map(([id,label])=>`<button class="${movieFilter===id?'active':''}" onclick="setMovieFilter('${id}')">${label}</button>`).join('')}</div>
+      <div class="sort-group"><span>Sortieren</span><button class="${movieSort==='recent'?'active':''}" onclick="setMovieSort('recent')">Neu</button><button class="${movieSort==='title'?'active':''}" onclick="setMovieSort('title')">A–Z</button><button class="${movieSort==='year'?'active':''}" onclick="setMovieSort('year')">Jahr</button></div>
+    </div>
+    <div class="movie-grid theater-grid">${items.map(card).join('')||'<div class="empty movies-empty">In dieser Ansicht gibt es gerade nichts zu sehen.</div>'}</div>
   </section>`
 }
+
 async function renderAdmin(){
   const content=$('#content');
   if(content) content.innerHTML='<div class="muted">Verwaltung wird geladen…</div>';
@@ -264,22 +276,37 @@ function closeWithEscape(el,onClose){let done=false;const finish=()=>{if(done)re
 async function detail(id){
   let a=await api('/api/media?id='+id),m=a[0];if(!m)return;
   let pct=mediaProgress(m),resumable=m.position>20&&m.duration>0&&pct<95,watched=pct>=95;
-  let el=document.createElement('div');el.className='modal detail-modal';
-  let poster=m.poster?`<div class="movieposter"><img src="${esc(m.poster)}" alt=""></div>`:'<div class="movieposter movieposter-empty"><span>▶</span><small>Kein Poster</small></div>';
-  let progress=resumable?`<div class="detail-progress"><div class="detail-progress-head"><strong>Weiterschauen</strong><span>${fmtTime(m.position)} von ${fmtTime(m.duration)} · ${Math.round(pct)}%</span></div><div class="detail-progress-bar"><i style="width:${pct}%"></i></div></div>`:'';
-  let status=watched?'<span class="detail-pill watched">✓ Gesehen</span>':resumable?'<span class="detail-pill started">▶ Angefangen</span>':'<span class="detail-pill">Noch nicht angesehen</span>';
+  let el=document.createElement('div');el.className='modal detail-modal detail-fullscreen';
+  let poster=m.poster?`<div class="detail-poster-xl"><img src="${esc(m.poster)}" alt=""></div>`:'<div class="detail-poster-xl detail-poster-empty"><span>▶</span><small>Kein Poster</small></div>';
+  let status=watched?'✓ Gesehen':resumable?'▶ Angefangen':'Noch nicht angesehen';
   let ext=(m.path||'').split('.').pop()?.toUpperCase(),size=m.size?humanSize(m.size):'',source=m.metadata_provider?m.metadata_provider==='thetvdb'?'TheTVDB':m.metadata_provider.toUpperCase():'';
   let tech=[ext,size].filter(Boolean).join(' · ');
-  el.innerHTML=`<div class="modalbox movie-detail-box"><div class="moviehero moviehero-detail" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"><div class="detail-backdrop-fade"></div><button class="close" aria-label="Schließen">×</button><div class="movie-detail-layout">${poster}<div class="moviecopy moviecopy-detail"><div class="detail-kicker">BUDDYFLIX FILM</div><h1>${esc(m.title)}</h1><div class="detail-meta"><span class="detail-pill">${m.year||'Jahr unbekannt'}</span>${m.duration>0?`<span class="detail-pill">${fmtTime(m.duration)}</span>`:''}${status}</div><p class="detail-overview">${esc(m.overview||'Für diesen Titel wurden noch keine Metadaten geladen. Du kannst ihn trotzdem direkt abspielen oder später identifizieren.')}</p>${progress}<div class="modalactions detail-actions"><button class="btn primary detail-play" id="p">▶ ${resumable?'Fortsetzen':'Abspielen'}</button>${resumable?'<button class="btn ghost" id="restart">↺ Von Anfang</button>':''}<button class="btn ghost" id="meta">◎ Identifizieren</button><button class="btn ghost" id="editmedia">✎ Bearbeiten</button></div><div class="detail-foot">${source?`<span>Metadaten: <strong>${esc(source)}</strong></span>`:''}${tech?`<span>${esc(tech)}</span>`:''}</div></div></div></div></div>`;
+  el.innerHTML=`<div class="detail-screen">
+    <div class="detail-screen-bg" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"></div>
+    <div class="detail-screen-fade"></div>
+    <button class="close detail-close" aria-label="Schließen">×</button>
+    <div class="detail-screen-inner">
+      ${poster}
+      <div class="detail-screen-copy">
+        <div class="detail-kicker">BUDDYFLIX FEATURE</div>
+        <h1>${esc(m.title)}</h1>
+        <div class="detail-meta-line"><span>${m.year||'Jahr unbekannt'}</span><span>${status}</span>${m.duration>0?`<span>${fmtTime(m.duration)}</span>`:''}</div>
+        <p>${esc(m.overview||'Für diesen Titel wurden noch keine Metadaten geladen. Du kannst ihn trotzdem direkt abspielen oder später identifizieren.')}</p>
+        ${resumable?`<div class="detail-progress-xl"><div><b>Weiterschauen</b><span>${fmtTime(m.position)} / ${fmtTime(m.duration)} · ${Math.round(pct)}%</span></div><i><em style="width:${pct}%"></em></i></div>`:''}
+        <div class="detail-screen-actions"><button class="btn primary detail-play" id="p">▶ ${resumable?'Fortsetzen':'Abspielen'}</button>${resumable?'<button class="btn ghost" id="restart">↺ Von Anfang</button>':''}<button class="btn ghost" id="meta">◎ Identifizieren</button><button class="btn ghost" id="editmedia">✎ Bearbeiten</button></div>
+        <div class="detail-tech">${source?`<span>Quelle <b>${esc(source)}</b></span>`:''}${tech?`<span>${esc(tech)}</span>`:''}</div>
+      </div>
+    </div>
+  </div>`;
   document.body.append(el);
   const close=closeWithEscape(el);
-  el.querySelector('.close').onclick=close;
-  el.onclick=e=>{if(e.target===el)close()};
+  el.querySelector('.detail-close').onclick=close;
   el.querySelector('#p').onclick=()=>{close();play(id,resumable?'resume':'start')};
   let restart=el.querySelector('#restart');if(restart)restart.onclick=()=>{close();play(id,'start')};
   el.querySelector('#meta').onclick=()=>{close();identifyMedia(m)};
   el.querySelector('#editmedia').onclick=()=>{close();editMedia(m)}
 }
+
 function editMedia(m){let el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="modalbox compact"><div class="panel"><div class="panel-title"><div><h3>Medium bearbeiten</h3><p class="muted">Metadaten manuell korrigieren.</p></div><button class="close">×</button></div><form id="mediaedit"><label class="field">Titel<input name="title" value="${esc(m.title)}"></label><label class="field">Jahr<input name="year" type="number" min="1888" max="2100" value="${m.year||''}"></label><label class="field">Beschreibung<textarea name="overview" rows="5">${esc(m.overview||'')}</textarea></label><label class="field">Poster-URL<input name="poster" value="${esc(m.poster||'')}"></label><label class="field">Backdrop-URL<input name="backdrop" value="${esc(m.backdrop||'')}"></label><div class="notice"><strong>Datei:</strong><br><code>${esc(m.path)}</code></div><button class="btn primary">Speichern</button></form></div></div>`;document.body.append(el);let close=closeWithEscape(el);el.querySelector('.close').onclick=close;el.querySelector('#mediaedit').onsubmit=async e=>{e.preventDefault();try{await api('/api/media?id='+m.id,{method:'PUT',body:JSON.stringify({title:e.target.title.value,year:Number(e.target.year.value)||0,overview:e.target.overview.value,poster:e.target.poster.value,backdrop:e.target.backdrop.value})});toast('Medium gespeichert');close();await refresh();renderMovies()}catch(x){toast(x.message)}}}
 async function resumePrompt(m){
   let el=document.createElement('div');el.className='modal resume-modal';
