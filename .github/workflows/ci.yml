@@ -44,6 +44,17 @@ jobs:
       - name: Check frontend JavaScript
         run: node --check web/app.js
 
+      - name: Check BuddyFlix metadata project credential
+        env:
+          BUDDYFLIX_TMDB_API_KEY: ${{ secrets.BUDDYFLIX_TMDB_API_KEY }}
+        shell: bash
+        run: |
+          if [ -n "${BUDDYFLIX_TMDB_API_KEY:-}" ]; then
+            echo "BuddyFlix metadata project credential: embedded"
+          else
+            echo "BuddyFlix metadata project credential: missing"
+          fi
+
       - name: Build linux amd64
         env:
           BUDDYFLIX_TMDB_API_KEY: ${{ secrets.BUDDYFLIX_TMDB_API_KEY }}
