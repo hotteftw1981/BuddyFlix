@@ -110,11 +110,43 @@ func normalizeTVDBImage(v string) string {
 	return "https://artworks.thetvdb.com/banners/" + strings.TrimPrefix(v, "/")
 }
 
-func (p *TVDBProvider) SearchMovie(title string, year int) ([]MetadataCandidate, error) {
-	q := url.Values{"query": {title}, "type": {"movie"}, "limit": {"12"}}
-	if year > 0 {
-		q.Set("year", strconv.Itoa(year))
+func cleanMetadataQuery(title string) string {
+	parts := strings.Fields(strings.NewReplacer(".", " ", "_", " ").Replace(title))
+	if len(parts) == 0 { return strings.TrimSpace(title) }
+
+	isReleaseToken := func(v string) bool {
+		v = strings.ToLower(strings.Trim(v, "[](){}.-_ "))
+		if v == "" { return false }
+		switch v {
+		case "2160p", "1080p", "720p", "576p", "480p", "4k", "uhd",
+			"bluray", "brrip", "bdrip", "webrip", "webdl", "web", "hdtv", "dvdrip", "hdrip", "remux",
+			"x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "10bit", "8bit",
+			"hdr", "hdr10", "hdr10plus", "dolbyvision", "dv",
+			"dts", "dtshd", "ac3", "eac3", "aac", "ddp", "truehd", "atmos", "flac",
+			"german", "deutsch", "dl", "dubbed", "subbed", "multi", "multilang", "internal",
+			"proper", "repack", "unrated", "extended", "directorscut", "retail":
+			return true
+		}
+		if strings.HasPrefix(v, "cd") || strings.HasPrefix(v, "disc") {
+			if len(v) > 2 { return true }
+		}
+		return false
 	}
+
+	cut := len(parts)
+	for i, p := range parts {
+		if isReleaseToken(p) {
+			cut = i
+			break
+		}
+	}
+	if cut == 0 { return strings.TrimSpace(title) }
+	return strings.TrimSpace(strings.Join(parts[:cut], " "))
+}
+
+func (p *TVDBProvider) searchMovieOnce(title string, year int) ([]MetadataCandidate, error) {
+	q := url.Values{"query": {title}, "type": {"movie"}, "limit": {"12"}}
+	if year > 0 { q.Set("year", strconv.Itoa(year)) }
 
 	var raw struct {
 		Data []struct {
@@ -123,6 +155,7 @@ func (p *TVDBProvider) SearchMovie(title string, year int) ([]MetadataCandidate,
 			Name           string            `json:"name"`
 			NameTranslated string            `json:"name_translated"`
 			Title          string            `json:"title"`
+			Aliases        []string          `json:"aliases"`
 			Year           string            `json:"year"`
 			Overview       string            `json:"overview"`
 			Overviews      map[string]string `json:"overviews"`
@@ -134,38 +167,22 @@ func (p *TVDBProvider) SearchMovie(title string, year int) ([]MetadataCandidate,
 			} `json:"remote_ids"`
 		} `json:"data"`
 	}
-	if err := p.get("/search?"+q.Encode(), &raw); err != nil {
-		return nil, err
-	}
+	if err := p.get("/search?"+q.Encode(), &raw); err != nil { return nil, err }
 
 	out := make([]MetadataCandidate, 0, len(raw.Data))
 	for _, z := range raw.Data {
 		id := strings.TrimSpace(z.TVDBID)
-		if id == "" {
-			id = strings.TrimSpace(z.ID)
-		}
-		if id == "" {
-			continue
-		}
+		if id == "" { id = strings.TrimSpace(z.ID) }
+		if id == "" { continue }
 
 		name := strings.TrimSpace(z.NameTranslated)
-		if name == "" {
-			name = strings.TrimSpace(z.Name)
-		}
-		if name == "" {
-			name = strings.TrimSpace(z.Title)
-		}
+		if name == "" { name = strings.TrimSpace(z.Name) }
+		if name == "" { name = strings.TrimSpace(z.Title) }
 		y, _ := strconv.Atoi(strings.TrimSpace(z.Year))
-
 		overview := strings.TrimSpace(z.Overviews["deu"])
-		if overview == "" {
-			overview = strings.TrimSpace(z.Overview)
-		}
-
+		if overview == "" { overview = strings.TrimSpace(z.Overview) }
 		poster := normalizeTVDBImage(z.Poster)
-		if poster == "" {
-			poster = normalizeTVDBImage(z.ImageURL)
-		}
+		if poster == "" { poster = normalizeTVDBImage(z.ImageURL) }
 
 		external := map[string]string{"tvdb": id}
 		for _, rid := range z.RemoteIDs {
@@ -178,17 +195,44 @@ func (p *TVDBProvider) SearchMovie(title string, year int) ([]MetadataCandidate,
 			}
 		}
 
+		alts := make([]string, 0, len(z.Aliases)+2)
+		for _, a := range z.Aliases {
+			a = strings.TrimSpace(a)
+			if a != "" && !strings.EqualFold(a, name) { alts = append(alts, a) }
+		}
+		if z.Name != "" && !strings.EqualFold(z.Name, name) { alts = append(alts, strings.TrimSpace(z.Name)) }
+		if z.Title != "" && !strings.EqualFold(z.Title, name) { alts = append(alts, strings.TrimSpace(z.Title)) }
+
 		out = append(out, MetadataCandidate{
-			Provider:    p.Name(),
-			ProviderID:  id,
-			Title:       name,
-			Year:        y,
-			Overview:    overview,
-			Poster:      poster,
-			ExternalIDs: external,
+			Provider: p.Name(), ProviderID: id, Title: name, Year: y,
+			Overview: overview, Poster: poster, ExternalIDs: external, AlternateTitles: alts,
 		})
 	}
 	return out, nil
+}
+
+func (p *TVDBProvider) SearchMovie(title string, year int) ([]MetadataCandidate, error) {
+	original := strings.TrimSpace(title)
+	cleaned := cleanMetadataQuery(original)
+
+	results, err := p.searchMovieOnce(original, year)
+	if err != nil { return nil, err }
+	if len(results) > 0 { return results, nil }
+
+	if cleaned != "" && !strings.EqualFold(cleaned, original) {
+		results, err = p.searchMovieOnce(cleaned, year)
+		if err != nil { return nil, err }
+		if len(results) > 0 { return results, nil }
+	}
+
+	// Year filters can be too strict when filenames contain a release year that
+	// differs from TheTVDB's primary year. Retry once without it.
+	fallbackTitle := original
+	if cleaned != "" { fallbackTitle = cleaned }
+	if year > 0 {
+		return p.searchMovieOnce(fallbackTitle, 0)
+	}
+	return results, nil
 }
 
 func (p *TVDBProvider) EnrichMovie(candidate MetadataCandidate) (MetadataCandidate, error) {
