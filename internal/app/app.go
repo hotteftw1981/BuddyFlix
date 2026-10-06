@@ -86,6 +86,13 @@ type Progress struct {
 	Updated  string  `json:"updated"`
 }
 
+type Profile struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Avatar  string `json:"avatar"`
+	Created string `json:"created"`
+}
+
 type MetadataJob struct {
 	Running      bool   `json:"running"`
 	Total        int    `json:"total"`
@@ -110,13 +117,16 @@ type Settings struct {
 }
 
 type Store struct {
-	ServerID      string             `json:"server_id"`
-	Settings      Settings           `json:"settings"`
-	NextLibraryID int64              `json:"next_library_id"`
-	NextMediaID   int64              `json:"next_media_id"`
-	Libraries     []Library          `json:"libraries"`
-	Media         []Media            `json:"media"`
-	Progress      map[int64]Progress `json:"progress"`
+	ServerID        string                       `json:"server_id"`
+	Settings        Settings                     `json:"settings"`
+	NextLibraryID   int64                        `json:"next_library_id"`
+	NextMediaID     int64                        `json:"next_media_id"`
+	NextProfileID   int64                        `json:"next_profile_id"`
+	Libraries       []Library                    `json:"libraries"`
+	Media           []Media                      `json:"media"`
+	Profiles        []Profile                    `json:"profiles,omitempty"`
+	Progress        map[int64]Progress           `json:"progress"`
+	ProfileProgress map[int64]map[int64]Progress `json:"profile_progress,omitempty"`
 }
 
 type Server struct {
@@ -147,7 +157,7 @@ func (s *Server) dbPath() string { return filepath.Join(s.cfg.DataDir, "buddyfli
 func (s *Server) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.st = Store{NextLibraryID: 1, NextMediaID: 1, Progress: map[int64]Progress{}}
+	s.st = Store{NextLibraryID: 1, NextMediaID: 1, NextProfileID: 1, Progress: map[int64]Progress{}, ProfileProgress: map[int64]map[int64]Progress{}}
 	s.st.Settings.ServerName = "BuddyFlix"
 	s.st.Settings.AdminUser = s.cfg.AdminUser
 	h := sha256.Sum256([]byte(s.cfg.AdminPassword))
@@ -169,6 +179,18 @@ func (s *Server) load() error {
 	}
 	if s.st.Progress == nil {
 		s.st.Progress = map[int64]Progress{}
+	}
+	if s.st.ProfileProgress == nil {
+		s.st.ProfileProgress = map[int64]map[int64]Progress{}
+	}
+	if len(s.st.Profiles) == 0 {
+		s.st.Profiles = []Profile{{ID: 1, Name: "Hauptprofil", Avatar: "🍿", Created: time.Now().Format(time.RFC3339)}}
+		s.st.NextProfileID = 2
+		if err := s.saveLocked(); err != nil { return err }
+	} else if s.st.NextProfileID < 1 {
+		var maxID int64
+		for _, p := range s.st.Profiles { if p.ID > maxID { maxID = p.ID } }
+		s.st.NextProfileID = maxID + 1
 	}
 	if s.st.ServerID == "" {
 		raw := make([]byte, 12)
@@ -192,6 +214,9 @@ func (s *Server) load() error {
 	}
 	if s.st.NextMediaID < 1 {
 		s.st.NextMediaID = 1
+	}
+	if s.st.NextProfileID < 1 {
+		s.st.NextProfileID = 1
 	}
 	return nil
 }
@@ -217,6 +242,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/system", s.auth(s.system))
 	s.mux.HandleFunc("/api/settings", s.auth(s.settings))
 	s.mux.HandleFunc("/api/password", s.auth(s.password))
+	s.mux.HandleFunc("/api/profiles", s.auth(s.profiles))
+	s.mux.HandleFunc("/api/profiles/select", s.auth(s.selectProfile))
 	s.mux.HandleFunc("/api/libraries", s.auth(s.libraries))
 	s.mux.HandleFunc("/api/scan", s.auth(s.scan))
 	s.mux.HandleFunc("/api/media", s.auth(s.media))
@@ -384,7 +411,7 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 		"version": Version,
 		"api_version": "1",
 		"product": "BuddyFlix Media Server",
-		"features": []string{"direct_play", "range_streaming", "progress", "libraries", "movies"},
+		"features": []string{"direct_play", "range_streaming", "progress", "libraries", "movies", "profiles"},
 	})
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +436,7 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	serverName := s.st.Settings.ServerName
 	s.mu.RUnlock()
-	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "scanning": sc, "tmdb": s.tmdbKey() != "", "tvdb": s.tvdbKey() != "", "storage": "embedded-json-v1"})
+	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "profiles": len(s.st.Profiles), "scanning": sc, "tmdb": s.tmdbKey() != "", "tvdb": s.tvdbKey() != "", "storage": "embedded-json-v1"})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -511,6 +538,119 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, map[string]bool{"ok": true})
 }
 
+func (s *Server) activeProfileID(r *http.Request) int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.st.Profiles) == 0 { return 0 }
+	if c, err := r.Cookie("buddyflix_profile"); err == nil {
+		if id, err := strconv.ParseInt(c.Value, 10, 64); err == nil {
+			for _, p := range s.st.Profiles {
+				if p.ID == id { return id }
+			}
+		}
+	}
+	return s.st.Profiles[0].ID
+}
+
+func (s *Server) profileProgressLocked(profileID int64) map[int64]Progress {
+	if len(s.st.Profiles) == 0 { return s.st.Progress }
+	defaultID := s.st.Profiles[0].ID
+	if profileID == 0 || profileID == defaultID {
+		if s.st.Progress == nil { s.st.Progress = map[int64]Progress{} }
+		return s.st.Progress
+	}
+	if s.st.ProfileProgress == nil { s.st.ProfileProgress = map[int64]map[int64]Progress{} }
+	if s.st.ProfileProgress[profileID] == nil { s.st.ProfileProgress[profileID] = map[int64]Progress{} }
+	return s.st.ProfileProgress[profileID]
+}
+
+func (s *Server) profiles(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		active := s.activeProfileID(r)
+		s.mu.RLock()
+		items := append([]Profile(nil), s.st.Profiles...)
+		s.mu.RUnlock()
+		_, cookieErr := r.Cookie("buddyflix_profile")
+		jsonOut(w, map[string]any{"profiles": items, "active_id": active, "selected": cookieErr == nil})
+	case "POST":
+		var x struct { Name, Avatar string }
+		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil { jsonErr(w, 400, "invalid json"); return }
+		x.Name = strings.TrimSpace(x.Name); x.Avatar = strings.TrimSpace(x.Avatar)
+		if x.Name == "" { jsonErr(w, 400, "profile name required"); return }
+		if len([]rune(x.Name)) > 30 { jsonErr(w, 400, "profile name too long"); return }
+		if x.Avatar == "" { x.Avatar = "🎬" }
+		if len([]rune(x.Avatar)) > 8 { jsonErr(w, 400, "avatar too long"); return }
+		s.mu.Lock()
+		if len(s.st.Profiles) >= 8 { s.mu.Unlock(); jsonErr(w, 400, "maximum of 8 profiles reached"); return }
+		p := Profile{ID: s.st.NextProfileID, Name: x.Name, Avatar: x.Avatar, Created: time.Now().Format(time.RFC3339)}
+		s.st.NextProfileID++
+		s.st.Profiles = append(s.st.Profiles, p)
+		if s.st.ProfileProgress == nil { s.st.ProfileProgress = map[int64]map[int64]Progress{} }
+		s.st.ProfileProgress[p.ID] = map[int64]Progress{}
+		err := s.saveLocked()
+		s.mu.Unlock()
+		if err != nil { jsonErr(w, 500, err.Error()); return }
+		jsonOut(w, p)
+	case "PUT":
+		id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		var x struct { Name, Avatar string }
+		if id < 1 || json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil { jsonErr(w, 400, "invalid profile"); return }
+		x.Name = strings.TrimSpace(x.Name); x.Avatar = strings.TrimSpace(x.Avatar)
+		if x.Name == "" || len([]rune(x.Name)) > 30 { jsonErr(w, 400, "invalid profile name"); return }
+		if x.Avatar == "" { x.Avatar = "🎬" }
+		s.mu.Lock()
+		found := false
+		for i := range s.st.Profiles {
+			if s.st.Profiles[i].ID == id {
+				s.st.Profiles[i].Name = x.Name
+				s.st.Profiles[i].Avatar = x.Avatar
+				found = true
+				break
+			}
+		}
+		if !found { s.mu.Unlock(); jsonErr(w, 404, "profile not found"); return }
+		err := s.saveLocked()
+		s.mu.Unlock()
+		if err != nil { jsonErr(w, 500, err.Error()); return }
+		jsonOut(w, map[string]bool{"ok": true})
+	case "DELETE":
+		id, _ := strconv.ParseInt(r.URL.Query().Get("id"), 10, 64)
+		s.mu.Lock()
+		if len(s.st.Profiles) <= 1 { s.mu.Unlock(); jsonErr(w, 400, "at least one profile is required"); return }
+		if len(s.st.Profiles) > 0 && id == s.st.Profiles[0].ID { s.mu.Unlock(); jsonErr(w, 400, "main profile cannot be deleted"); return }
+		found := false
+		next := s.st.Profiles[:0]
+		for _, p := range s.st.Profiles {
+			if p.ID == id { found = true; continue }
+			next = append(next, p)
+		}
+		if !found { s.mu.Unlock(); jsonErr(w, 404, "profile not found"); return }
+		s.st.Profiles = next
+		delete(s.st.ProfileProgress, id)
+		err := s.saveLocked()
+		s.mu.Unlock()
+		if err != nil { jsonErr(w, 500, err.Error()); return }
+		jsonOut(w, map[string]bool{"ok": true})
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
+}
+
+func (s *Server) selectProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	var x struct { ProfileID int64 `json:"profile_id"` }
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil || x.ProfileID < 1 { jsonErr(w, 400, "invalid profile"); return }
+	s.mu.RLock()
+	found := false
+	for _, p := range s.st.Profiles { if p.ID == x.ProfileID { found = true; break } }
+	s.mu.RUnlock()
+	if !found { jsonErr(w, 404, "profile not found"); return }
+	http.SetCookie(w, &http.Cookie{Name:"buddyflix_profile", Value:strconv.FormatInt(x.ProfileID,10), Path:"/", SameSite:http.SameSiteLaxMode, MaxAge:31536000})
+	jsonOut(w, map[string]bool{"ok": true})
+}
+
+
 func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -592,6 +732,7 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 				med = append(med, m)
 			} else {
 				delete(s.st.Progress, m.ID)
+				for pid := range s.st.ProfileProgress { delete(s.st.ProfileProgress[pid], m.ID) }
 			}
 		}
 		s.st.Media = med
@@ -842,6 +983,10 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 	}
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	includeMissing := r.URL.Query().Get("include_missing") == "1"
+	profileID := s.activeProfileID(r)
+	s.mu.Lock()
+	progressMap := s.profileProgressLocked(profileID)
+	s.mu.Unlock()
 	s.mu.RLock()
 	out := make([]Media, 0)
 	for _, m := range s.st.Media {
@@ -854,7 +999,7 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 		if q != "" && !strings.Contains(strings.ToLower(m.Title), q) {
 			continue
 		}
-		if p, ok := s.st.Progress[m.ID]; ok {
+		if p, ok := progressMap[m.ID]; ok {
 			m.Position = p.Position
 			m.Duration = p.Duration
 			if p.Duration > 0 {
@@ -872,17 +1017,19 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) mediaAction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	profileID := s.activeProfileID(r)
 	var x struct { MediaID int64 `json:"media_id"`; Action string `json:"action"` }
 	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil || x.MediaID < 1 { jsonErr(w, 400, "invalid json"); return }
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	progressMap := s.profileProgressLocked(profileID)
 	for i := range s.st.Media {
 		if s.st.Media[i].ID != x.MediaID { continue }
 		switch x.Action {
 		case "reset_progress", "mark_unwatched":
-			delete(s.st.Progress, x.MediaID)
+			delete(progressMap, x.MediaID)
 		case "mark_watched":
-			s.st.Progress[x.MediaID] = Progress{Position: 1, Duration: 1, Updated: time.Now().Format(time.RFC3339)}
+			progressMap[x.MediaID] = Progress{Position: 1, Duration: 1, Updated: time.Now().Format(time.RFC3339)}
 		case "lock_metadata":
 			s.st.Media[i].MetadataLocked = true
 		case "unlock_metadata":
@@ -903,7 +1050,12 @@ func (s *Server) mediaCleanup(w http.ResponseWriter, r *http.Request) {
 	kept := s.st.Media[:0]
 	removed := 0
 	for _, m := range s.st.Media {
-		if m.Missing { delete(s.st.Progress, m.ID); removed++; continue }
+		if m.Missing {
+			delete(s.st.Progress, m.ID)
+			for pid := range s.st.ProfileProgress { delete(s.st.ProfileProgress[pid], m.ID) }
+			removed++
+			continue
+		}
 		kept = append(kept, m)
 	}
 	s.st.Media = kept
@@ -1165,8 +1317,10 @@ func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "invalid json")
 		return
 	}
+	profileID := s.activeProfileID(r)
 	s.mu.Lock()
-	s.st.Progress[x.MediaID] = Progress{x.Position, x.Duration, time.Now().Format(time.RFC3339)}
+	progressMap := s.profileProgressLocked(profileID)
+	progressMap[x.MediaID] = Progress{x.Position, x.Duration, time.Now().Format(time.RFC3339)}
 	e := s.saveLocked()
 	s.mu.Unlock()
 	if e != nil {
