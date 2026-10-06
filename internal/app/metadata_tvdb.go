@@ -119,7 +119,7 @@ func cleanMetadataQuery(title string) string {
 		if v == "" { return false }
 		switch v {
 		case "2160p", "1080p", "720p", "576p", "480p", "4k", "uhd",
-			"bluray", "brrip", "bdrip", "webrip", "webdl", "web", "hdtv", "dvdrip", "hdrip", "remux",
+			"bluray", "brrip", "bdrip", "webrip", "webdl", "web-dl", "web", "hdtv", "dvdrip", "hdrip", "remux",
 			"x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "10bit", "8bit",
 			"hdr", "hdr10", "hdr10plus", "dolbyvision", "dv",
 			"dts", "dtshd", "ac3", "eac3", "aac", "ddp", "truehd", "atmos", "flac",
