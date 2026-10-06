@@ -506,3 +506,71 @@ body.cinema-focus .hero-nav-right{right:170px}
 @media(max-width:1150px){.cinewall{grid-template-columns:repeat(2,minmax(0,1fr))}.cine-card-wide{grid-column:span 2}}
 @media(max-width:800px){.library-tools{width:100%;justify-content:space-between}.cinewall{grid-template-columns:1fr}.cine-card-wide{grid-column:span 1}.cine-card{min-height:220px}}
 @media(max-width:560px){.library-tools{align-items:flex-start;flex-direction:column}.cine-card{min-height:190px;border-radius:18px}.cine-copy{left:16px;right:16px;bottom:15px}.cine-copy p{display:none}}
+
+
+/* Dev84: BuddyFlix Profiles */
+.profile-pill{display:flex;align-items:center;gap:9px;height:46px;padding:4px 11px 4px 5px;border:1px solid #29303a;border-radius:15px;background:#10141a;color:#fff;cursor:pointer;transition:.18s;min-width:138px}
+.profile-pill:hover{background:#171c24;border-color:#4a5565;transform:translateY(-1px)}
+.profile-pill-avatar{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#2a170d,#171b22);border:1px solid #5b321c;font-size:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.profile-pill-copy{display:grid;text-align:left;line-height:1.05;min-width:0}
+.profile-pill-copy b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
+.profile-pill-copy small{font-size:8px;color:#717b8b;margin-top:4px}
+.profile-chevron{font-size:11px;color:#6e7887;margin-left:auto}
+
+.profile-modal{position:fixed;inset:0;z-index:4000;display:grid;place-items:center;padding:30px;background:
+  radial-gradient(circle at 50% 20%,rgba(255,107,26,.12),transparent 24rem),
+  rgba(3,4,6,.94);backdrop-filter:blur(18px);animation:profileFade .18s ease-out}
+@keyframes profileFade{from{opacity:0}to{opacity:1}}
+.profile-stage{position:relative;width:min(1180px,94vw);padding:54px 46px 64px;text-align:center}
+.profile-stage-brand{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:28px}
+.profile-stage-brand img{width:180px;max-width:45vw;filter:drop-shadow(0 15px 32px rgba(0,0,0,.45))}
+.profile-stage-brand span{font-size:9px;font-weight:950;letter-spacing:.24em;color:#697384}
+.profile-stage h1{font-size:clamp(44px,6vw,78px);line-height:.95;letter-spacing:-.05em;margin:0 0 12px}
+.profile-stage>p{margin:0 auto 38px;color:#7f8998;font-size:13px}
+.profile-close{position:absolute;right:0;top:18px;width:46px;height:46px;border-radius:50%;border:1px solid #333b47;background:#11151b;color:#fff;font-size:22px;cursor:pointer}
+.profile-close:hover{background:#252c36}
+.profile-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:22px;max-width:980px;margin:0 auto}
+.profile-card{position:relative;min-height:220px;padding:24px 14px 20px;border:1px solid #252c36;border-radius:24px;background:linear-gradient(180deg,#12161d,#0c0f14);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:.22s;overflow:hidden}
+.profile-card:before{content:"";position:absolute;inset:auto 10% -35% 10%;height:60%;background:radial-gradient(circle,rgba(255,107,26,.18),transparent 70%);opacity:0;transition:.22s}
+.profile-card:hover,.profile-card.active{transform:translateY(-8px);border-color:#75411f;box-shadow:0 26px 65px rgba(0,0,0,.35)}
+.profile-card:hover:before,.profile-card.active:before{opacity:1}
+.profile-avatar{position:relative;z-index:2;width:96px;height:96px;border-radius:30px;display:grid;place-items:center;background:linear-gradient(145deg,#262d37,#10141a);border:1px solid #394250;font-size:46px;box-shadow:0 18px 42px rgba(0,0,0,.34);transition:.22s}
+.profile-card:hover .profile-avatar,.profile-card.active .profile-avatar{transform:scale(1.06) rotate(-2deg);border-color:#92512a;box-shadow:0 20px 50px rgba(255,107,26,.1)}
+.profile-card strong{position:relative;z-index:2;margin-top:18px;font-size:16px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-card>span{position:relative;z-index:2;margin-top:5px;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#697383}
+.profile-edit{position:absolute;z-index:3;right:10px;top:10px;width:30px;height:30px;border-radius:10px;border:1px solid #2c333e;background:#11151b;color:#7f8999;opacity:0;cursor:pointer;transition:.18s}
+.profile-card:hover .profile-edit{opacity:1}.profile-edit:hover{color:#fff;background:#252b35}
+.profile-add{border-style:dashed;background:#0b0e12}
+.profile-add .profile-avatar{font-size:38px;color:#727c8c;background:#0f1318}
+.profile-add:hover .profile-avatar{color:#ff9b64}
+
+.profile-editor-modal{z-index:4100}
+.profile-editor{position:relative;width:min(760px,94vw);display:grid;grid-template-columns:220px minmax(0,1fr);gap:34px;padding:38px;border:1px solid #303845;border-radius:28px;background:
+  radial-gradient(circle at 15% 25%,rgba(255,107,26,.14),transparent 18rem),
+  linear-gradient(145deg,#151920,#0b0e13);box-shadow:0 38px 100px rgba(0,0,0,.6)}
+.profile-editor-preview{width:220px;aspect-ratio:1;border-radius:44px;display:grid;place-items:center;font-size:96px;background:linear-gradient(145deg,#282f39,#101319);border:1px solid #3c4654;box-shadow:0 28px 70px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04)}
+.profile-editor-kicker{font-size:9px;font-weight:950;letter-spacing:.2em;color:#ff8f50;margin-top:8px}
+.profile-editor h2{font-size:36px;letter-spacing:-.04em;margin:5px 0 20px}
+.avatar-picker{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0 22px}
+.avatar-picker button{aspect-ratio:1;border:1px solid #29313c;border-radius:13px;background:#10141a;font-size:23px;cursor:pointer;transition:.16s}
+.avatar-picker button:hover{transform:translateY(-2px);background:#1b2028}
+.avatar-picker button.active{border-color:#8b4b27;background:#2a170d;box-shadow:0 0 0 2px rgba(255,107,26,.08)}
+.profile-editor-actions{display:flex;gap:9px;flex-wrap:wrap}
+.profile-confirm{position:fixed;inset:0;z-index:4200;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.7);backdrop-filter:blur(10px)}
+.profile-confirm>div{width:min(430px,92vw);padding:28px;border:1px solid #3b424d;border-radius:22px;background:#11151b;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.profile-confirm h3{margin:0 0 8px;font-size:24px}.profile-confirm p{color:#8e98a7;line-height:1.55;margin:0 0 22px}.profile-confirm>div>div{display:flex;gap:9px}
+
+@media(max-width:1100px){
+  .profile-pill-copy{display:none}.profile-pill{min-width:46px;padding-right:5px}.profile-chevron{display:none}
+}
+@media(max-width:760px){
+  .profile-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .profile-stage{padding:38px 10px}.profile-stage-brand img{width:140px}
+  .profile-card{min-height:180px;border-radius:20px}.profile-avatar{width:76px;height:76px;border-radius:24px;font-size:36px}
+  .profile-editor{grid-template-columns:1fr;padding:28px 22px}.profile-editor-preview{width:120px;border-radius:30px;font-size:56px;margin:0 auto}.avatar-picker{grid-template-columns:repeat(6,1fr)}
+}
+@media(max-width:520px){
+  .profile-modal{padding:14px}.profile-stage h1{font-size:40px}.profile-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .profile-card{min-height:155px;padding:16px 8px}.profile-avatar{width:64px;height:64px;font-size:31px;border-radius:20px}.profile-card strong{font-size:13px}
+  .avatar-picker{grid-template-columns:repeat(4,1fr)}
+}
