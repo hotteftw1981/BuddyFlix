@@ -68,8 +68,9 @@ V0.1.0 ist weiterhin nur der bestätigte QNAP-Proof-of-Concept. Alles, was unten
 - Client-/Discovery-Endpunkte für spätere Apps
 - dynamische Versionsanzeige im Frontend
 - eindeutige Dev-Buildnummern für QNAP-Testpakete
-- GitHub CI mit Tests, JavaScript-Syntaxcheck sowie AMD64- und ARMHF-Build
-- automatische Erzeugung eines installierbaren QNAP-ARMHF-Dev-QPKG als GitHub-Actions-Artifact
+- schlanke GitHub CI mit automatischen Tests und JavaScript-Syntaxcheck bei normalen `develop`-Pushes
+- ARMHF-QPKG nur gezielt per `[qpkg]`-Commit oder manuellem Workflow-Start; so entstehen Testpakete ohne jeden Zwischen-Commit teuer zu bauen
+- installierbare QNAP-ARMHF-Dev-QPKGs als kurzlebige GitHub-Actions-Artefakte
 - neues BuddyFlix-Logo in Weboberfläche und Anmeldeseiten
 - eigenes BuddyFlix-App-Icon für QNAP-QPKG
 
