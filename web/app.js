@@ -90,10 +90,36 @@ async function toggleFavorite(id,want){
 function renderCurrentView(){
   if(currentView==='mylist')renderMyList();
   else if(currentView==='movies')renderMovies();
+  else if(currentView==='series')renderSeries();
   else if(currentView==='home')renderHome();
 }
 function historyItems(){
   return state.media.filter(m=>m.progress_updated).slice().sort((a,b)=>String(b.progress_updated).localeCompare(String(a.progress_updated)));
+}
+function activeContinueItems(){
+  return state.media
+    .filter(m=>mediaProgress(m)>1&&mediaProgress(m)<95&&!m.missing)
+    .slice()
+    .sort((a,b)=>String(b.progress_updated||'').localeCompare(String(a.progress_updated||'')))
+    .slice(0,14)
+}
+function continueCard(m){
+  let pct=mediaProgress(m),episode=m.kind==='episode',art=m.backdrop||m.poster||'';
+  let code=episode?('S'+String(m.season||0).padStart(2,'0')+'E'+String(m.episode||0).padStart(2,'0')):'';
+  let kicker=episode?(m.series_title||'SERIE'):'FILM';
+  let meta=episode?(code+' · '+(m.title||m.episode_title||'Episode')):((m.year||'Film')+' · weiter bei '+fmtTime(m.position));
+  return `<article class="continue-card" onclick="detail(${m.id})">
+    <div class="continue-art" ${art?`style="background-image:url('${esc(art)}')"`:''}></div>
+    <div class="continue-shade"></div>
+    <div class="continue-copy"><span>${esc(kicker)}</span><h3>${episode?esc(m.series_title||m.title):esc(m.title)}</h3><small>${esc(meta)}</small></div>
+    <button class="continue-play" onclick="event.stopPropagation();play(${m.id},'resume')" aria-label="Fortsetzen">▶</button>
+    <div class="continue-progress"><i style="width:${pct}%"></i></div>
+    <b class="continue-percent">${Math.round(pct)}%</b>
+  </article>`
+}
+function continueSection(items){
+  if(!items.length)return '';
+  return `<section class="home-section theater-shelf continue-shelf"><div class="rowhead"><div><div class="shelf-kicker">DEIN FORTSCHRITT</div><h2>Weiterschauen</h2></div><span class="rail-count">${items.length}</span></div><div class="continue-rail">${items.map(continueCard).join('')}</div></section>`
 }
 function renderMyList(){
   currentView='mylist';stopHeroRotation();
@@ -115,17 +141,21 @@ function pickSomething(){let pool=movieMedia().filter(m=>!m.missing);if(!pool.le
 
 function renderHome(){
   let movies=movieMedia();
-  let continueItems=movies.filter(m=>m.progress>1&&m.progress<95).slice(0,12);
+  let continueItems=activeContinueItems();
   let newest=movies.slice(0,18);
   let unseen=movies.filter(m=>mediaProgress(m)<1).slice(0,14);
   let classics=movies.filter(m=>m.year&&m.year<2000).slice(0,14);
   let modern=movies.filter(m=>m.year>=2010).slice(0,14);
   let favorites=movies.filter(m=>m.favorite).slice(0,14);
   let history=historyItems().filter(m=>m.kind!=='episode').slice(0,14);
-  let seriesContinue=state.series.filter(x=>x.next_episode&&x.next_episode.progress>1&&x.next_episode.progress<95).slice(0,8);
+  let seriesContinue=state.series
+    .filter(x=>x.next_episode&&mediaProgress(x.next_episode)<1&&x.watched_count>0)
+    .slice()
+    .sort((a,b)=>String(b.last_activity||'').localeCompare(String(a.last_activity||'')))
+    .slice(0,8);
   let heroes=heroCandidates();
   if(heroes.length&&heroIndex>=heroes.length)heroIndex=0;
-  let hero=heroes[heroIndex]||continueItems.find(m=>m.backdrop)||state.media[0];
+  let hero=heroes[heroIndex]||continueItems.find(m=>m.kind!=='episode'&&m.backdrop)||movies[0]||state.media[0];
   let heroPct=hero?mediaProgress(hero):0,heroResume=hero&&hero.position>20&&hero.duration>0&&heroPct<95;
   let watchedCount=movies.filter(m=>mediaProgress(m)>=95).length;
   let spotlight=heroes.filter((_,i)=>i!==heroIndex).slice(0,3);
@@ -155,7 +185,7 @@ function renderHome(){
     </section>`:''}
     <div class="shelf-zone">
       ${featureStrip(showcase)}
-      ${homeSection('Weiterschauen',continueItems,'DEIN FORTSCHRITT')}
+      ${continueSection(continueItems)}
       ${seriesHomeSection(seriesContinue)}
       ${homeSection('Meine Liste',favorites,'VON DIR GEMERKT')}
       ${homeSection('Zuletzt angesehen',history,'DEINE LETZTEN FILMABENDE')}
@@ -212,11 +242,12 @@ function renderMovies(){
 function seriesArtwork(show){let ep=show.next_episode||(show.seasons?.[0]?.episodes?.[0]);return show.backdrop||show.poster||ep?.backdrop||ep?.poster||''}
 function seriesHomeSection(items){
   if(!items.length)return '';
-  return `<section class="home-section theater-shelf series-shelf"><div class="rowhead"><div><div class="shelf-kicker">DEINE SERIEN</div><h2>Serien weiterschauen</h2></div><span class="rail-count">${items.length}</span></div><div class="series-rail">${items.map(seriesCard).join('')}</div></section>`
+  return `<section class="home-section theater-shelf series-shelf"><div class="rowhead"><div><div class="shelf-kicker">BEREIT FÜR DICH</div><h2>Nächste Serienfolge</h2></div><span class="rail-count">${items.length}</span></div><div class="series-rail">${items.map(seriesCard).join('')}</div></section>`
 }
 function seriesCard(show){
-  let art=seriesArtwork(show),next=show.next_episode,pct=next?mediaProgress(next):0;
-  return `<article class="series-card" onclick="openSeries('${encodeURIComponent(show.key)}')"><div class="series-card-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-card-shade"></div><div class="series-card-copy"><span>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen</span><h3>${esc(show.title)}</h3>${next?"<small>Als Nächstes: S"+String(next.season||0).padStart(2,'0')+"E"+String(next.episode||0).padStart(2,'0')+" · "+esc(next.title)+"</small>":''}</div>${pct>1&&pct<95?"<div class=\"series-card-progress\"><i style=\"width:"+pct+"%\"></i></div>":''}</article>`
+  let art=seriesArtwork(show),next=show.next_episode,pct=next?mediaProgress(next):0,resume=pct>1&&pct<95;
+  let nextText=next?((resume?'Fortsetzen: ':'Als Nächstes: ')+'S'+String(next.season||0).padStart(2,'0')+'E'+String(next.episode||0).padStart(2,'0')+' · '+esc(next.title)):'';
+  return `<article class="series-card" onclick="openSeries('${encodeURIComponent(show.key)}')"><div class="series-card-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-card-shade"></div><div class="series-card-copy"><span>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen</span><h3>${esc(show.title)}</h3>${next?'<small>'+nextText+'</small>':''}</div>${resume?"<div class=\"series-card-progress\"><i style=\"width:"+pct+"%\"></i></div>":''}</article>`
 }
 function renderSeries(query=''){
   currentView='series';stopHeroRotation();
@@ -497,14 +528,15 @@ function openPlayer(m,startAt=0){
   let playerMeta=m.kind==='episode'?((m.series_title||'Serie')+' · S'+String(m.season||0).padStart(2,'0')+'E'+String(m.episode||0).padStart(2,'0')):(m.year||'');
   el.innerHTML=`<div class="video-titlebar"><strong>${esc(m.title)}</strong><span>${esc(playerMeta)}</span></div><video controls autoplay playsinline src="/stream/${m.id}"></video><button class="close player-close" aria-label="Player schließen">×</button>`;
   document.body.append(el);let v=el.querySelector('video'),last=0,closed=false;
-  const finish=()=>{if(closed)return;closed=true;saveProgress(m.id,v.currentTime,v.duration);v.pause();document.removeEventListener('keydown',key);el.remove();refresh()};
+  const finish=async()=>{if(closed)return;closed=true;let p=v.currentTime,d=v.duration;v.pause();document.removeEventListener('keydown',key);el.remove();await saveProgress(m.id,p,d);await refresh();renderCurrentView()};
   const key=e=>{if(e.key==='Escape')finish()};
   document.addEventListener('keydown',key);
   v.onloadedmetadata=()=>{if(startAt>0&&startAt<v.duration-20)v.currentTime=startAt};
   v.ontimeupdate=()=>{if(Date.now()-last>10000){last=Date.now();saveProgress(m.id,v.currentTime,v.duration)}};
+  v.onseeked=()=>{if(!closed)saveProgress(m.id,v.currentTime,v.duration)};
   v.onpause=()=>{if(!closed)saveProgress(m.id,v.currentTime,v.duration)};
-  v.onended=async()=>{if(closed)return;closed=true;await saveProgress(m.id,v.duration,v.duration);v.pause();document.removeEventListener('keydown',key);el.remove();await refresh();let next=nextEpisodeFor(m);if(next)nextEpisodePrompt(next)};
+  v.onended=async()=>{if(closed)return;closed=true;await saveProgress(m.id,v.duration,v.duration);v.pause();document.removeEventListener('keydown',key);el.remove();await refresh();renderCurrentView();let next=nextEpisodeFor(m);if(next)nextEpisodePrompt(next)};
   el.querySelector('.close').onclick=finish
 }
-async function saveProgress(id,p,d){if(!Number.isFinite(d)||d<=0)return;try{await api('/api/progress',{method:'POST',body:JSON.stringify({media_id:id,Position:p,Duration:d})})}catch{}}
+async function saveProgress(id,p,d){if(!Number.isFinite(d)||d<=0)return false;try{await api('/api/progress',{method:'POST',keepalive:true,body:JSON.stringify({media_id:id,Position:p,Duration:d})});return true}catch{return false}}
 boot();
