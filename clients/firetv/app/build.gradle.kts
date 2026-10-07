@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "de.buddyflix.firetv"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "de.buddyflix.firetv"
