@@ -699,3 +699,15 @@ body.cinema-focus .hero-nav-right{right:170px}
   .episode-row{grid-template-columns:42px 45px minmax(0,1fr);padding:10px}
   .episode-info{display:none}
 }
+
+
+/* Dev99: episode handoff */
+.next-episode-modal{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;padding:24px;background:rgba(2,3,5,.82);backdrop-filter:blur(16px)}
+.next-episode-card{width:min(560px,92vw);padding:34px;border:1px solid #343c48;border-radius:28px;background:
+  radial-gradient(circle at 20% 0%,rgba(255,107,26,.13),transparent 18rem),
+  linear-gradient(145deg,#161a21,#0d1015);box-shadow:0 40px 110px rgba(0,0,0,.66)}
+.next-episode-card h2{font-size:36px;letter-spacing:-.04em;margin:6px 0 10px}
+.next-episode-card p{margin:0 0 18px;color:#c7cdd7}
+.next-count{margin:18px 0 24px;padding:13px 15px;border:1px solid #2c333e;border-radius:14px;background:#0f1318;color:#8993a3;font-size:12px}
+.next-count b{color:#ff9b65;font-size:18px;margin:0 4px}
+@media(max-width:560px){.next-episode-card{padding:26px 20px;border-radius:22px}.next-episode-card h2{font-size:30px}}
