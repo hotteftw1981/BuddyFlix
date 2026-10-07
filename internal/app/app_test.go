@@ -920,3 +920,79 @@ func TestSeriesExposesLastActivityAndNextUnwatchedEpisode(t *testing.T) {
 		t.Fatalf("expected next unwatched episode after completed episode: %+v", out[0].NextEpisode)
 	}
 }
+
+
+func TestDeviceLoginBearerAuthAndProfileHeader(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Settings.SetupDone = true
+	s.st.Media = []Media{{ID:1, Title:"Movie", Path:"/movie.mkv"}}
+	s.st.NextMediaID = 2
+	s.st.Profiles = append(s.st.Profiles, Profile{ID:2, Name:"Gast", Avatar:"🎬"})
+	s.st.NextProfileID = 3
+	s.st.ProfileProgress[2] = map[int64]Progress{1:{Position:40, Duration:100, Updated:"2026-10-07T20:00:00Z"}}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/device/login", bytes.NewBufferString(`{"username":"admin","password":"buddyflix","device_name":"Fire TV Wohnzimmer"}`))
+	rec := httptest.NewRecorder()
+	s.deviceLogin(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("device login failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var login map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &login); err != nil { t.Fatal(err) }
+	token, _ := login["token"].(string)
+	if token == "" { t.Fatalf("missing device token: %+v", login) }
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media?id=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-BuddyFlix-Profile", "2")
+	rec = httptest.NewRecorder()
+	s.auth(s.media)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bearer media request failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var items []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil { t.Fatal(err) }
+	if len(items) != 1 || items[0].Progress != 40 {
+		t.Fatalf("profile header was not applied: %+v", items)
+	}
+
+	s.mu.RLock()
+	if len(s.st.DeviceTokens) != 1 || s.st.DeviceTokens[0].TokenHash == token {
+		s.mu.RUnlock()
+		t.Fatal("device token must be stored hashed")
+	}
+	s.mu.RUnlock()
+}
+
+func TestDeviceLogoutRevokesBearerToken(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Settings.SetupDone = true
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/device/login", bytes.NewBufferString(`{"username":"admin","password":"buddyflix","device_name":"Fire TV"}`))
+	rec := httptest.NewRecorder()
+	s.deviceLogin(rec, req)
+	var login map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &login)
+	token, _ := login["token"].(string)
+	if token == "" { t.Fatal("missing token") }
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/device/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	s.auth(s.deviceLogout)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logout failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	s.auth(s.media)(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked token should be unauthorized, got %d", rec.Code)
+	}
+}
