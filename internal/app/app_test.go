@@ -776,3 +776,85 @@ func TestMediaReturnsProgressUpdatedForHistory(t *testing.T) {
 		t.Fatalf("history metadata missing: %+v", items)
 	}
 }
+
+
+func TestEpisodeFromPathCommonPatterns(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "media", "Shows")
+	series, season, episode, title := episodeFromPath(root, filepath.Join(root, "Dark", "Staffel 1", "Dark.S01E03.Gestern.und.Heute.mkv"))
+	if series != "Dark" || season != 1 || episode != 3 || title != "Gestern und Heute" {
+		t.Fatalf("unexpected SxxExx parse: series=%q season=%d episode=%d title=%q", series, season, episode, title)
+	}
+
+	series, season, episode, title = episodeFromPath(root, filepath.Join(root, "The Office", "Season 02", "02x05 Halloween.mp4"))
+	if series != "The Office" || season != 2 || episode != 5 || title != "Halloween" {
+		t.Fatalf("unexpected x pattern parse: series=%q season=%d episode=%d title=%q", series, season, episode, title)
+	}
+}
+
+func TestSeriesAPIgroupsSeasonsAndUsesProfileProgress(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{
+		{ID:1, Kind:"episode", SeriesTitle:"Dark", Season:1, Episode:1, Title:"Geheimnisse"},
+		{ID:2, Kind:"episode", SeriesTitle:"Dark", Season:1, Episode:2, Title:"Lügen"},
+		{ID:3, Kind:"episode", SeriesTitle:"Dark", Season:2, Episode:1, Title:"Anfänge und Enden"},
+		{ID:4, Kind:"movie", Title:"Ein Film"},
+	}
+	s.st.Progress[1] = Progress{Position:1, Duration:1, Updated:"2026-10-07T17:00:00Z"}
+	s.st.Progress[2] = Progress{Position:50, Duration:100, Updated:"2026-10-07T18:00:00Z"}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/series", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"1"})
+	rec := httptest.NewRecorder()
+	s.series(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("series failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var out []SeriesView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil { t.Fatal(err) }
+	if len(out) != 1 {
+		t.Fatalf("expected one series, got %+v", out)
+	}
+	got := out[0]
+	if got.Title != "Dark" || got.SeasonCount != 2 || got.EpisodeCount != 3 || got.WatchedCount != 1 || got.ContinueCount != 1 {
+		t.Fatalf("unexpected series summary: %+v", got)
+	}
+	if got.NextEpisode == nil || got.NextEpisode.ID != 2 || got.NextEpisode.Progress != 50 {
+		t.Fatalf("expected in-progress episode as next episode: %+v", got.NextEpisode)
+	}
+	if len(got.Seasons) != 2 || len(got.Seasons[0].Episodes) != 2 {
+		t.Fatalf("unexpected seasons: %+v", got.Seasons)
+	}
+}
+
+func TestShowsLibraryScannerMarksEpisodes(t *testing.T) {
+	s := newTestServer(t)
+	root := t.TempDir()
+	seasonDir := filepath.Join(root, "Dark", "Staffel 01")
+	if err := os.MkdirAll(seasonDir, 0755); err != nil { t.Fatal(err) }
+	file := filepath.Join(seasonDir, "Dark.S01E01.Geheimnisse.mkv")
+	if err := os.WriteFile(file, []byte("video"), 0644); err != nil { t.Fatal(err) }
+
+	s.mu.Lock()
+	s.st.Libraries = []Library{{ID:1, Name:"Serien", Path:root, Type:"shows"}}
+	s.st.NextLibraryID = 2
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/scan", nil)
+	rec := httptest.NewRecorder()
+	s.scan(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scan failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.st.Media) != 1 {
+		t.Fatalf("expected one episode, got %+v", s.st.Media)
+	}
+	m := s.st.Media[0]
+	if m.Kind != "episode" || m.SeriesTitle != "Dark" || m.Season != 1 || m.Episode != 1 || m.Title != "Geheimnisse" {
+		t.Fatalf("episode metadata not parsed: %+v", m)
+	}
+}
