@@ -1,12 +1,12 @@
-const $=s=>document.querySelector(s);let state={media:[],libs:[],system:null,user:null,profiles:[],activeProfile:null,profileSelected:false};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',movieView='posters',heroIndex=0,currentView='home';
+const $=s=>document.querySelector(s);let state={media:[],series:[],libs:[],system:null,user:null,profiles:[],activeProfile:null,profileSelected:false};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',movieView='posters',heroIndex=0,currentView='home';
 async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});if(r.status===401){loginView();throw new Error('unauthorized')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Fehler');return j}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function toast(t){let x=document.createElement('div');x.className='toast';x.textContent=t;document.body.append(x);setTimeout(()=>x.remove(),2500)}
 function setupView(info={}){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card setup-card" id="setup"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><div class="setup-step">ERSTEINRICHTUNG</div><h1>Mach es zu deinem Server.</h1><div class="muted">Einmal kurz einrichten, danach gehört die Standard-Anmeldung der Vergangenheit an.</div><label class="field">Servername<input name="server_name" value="${esc(info.server_name||'BuddyFlix')}"></label><label class="field">Admin-Benutzer<input name="admin_user" value="admin" autocomplete="username"></label><label class="field">Admin-Passwort<input name="password" type="password" minlength="8" autocomplete="new-password"></label><label class="field">Passwort wiederholen<input name="repeat" type="password" minlength="8" autocomplete="new-password"></label><div class="notice">Metadatenanbieter werden von BuddyFlix verwaltet. Für die normale Einrichtung ist kein eigener API-Key vorgesehen.</div><button class="btn primary">BuddyFlix einrichten</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#setup').onsubmit=async e=>{e.preventDefault();if(e.target.password.value!==e.target.repeat.value){$('#err').textContent='Die Passwörter stimmen nicht überein.';return}try{await api('/api/setup',{method:'POST',body:JSON.stringify({server_name:e.target.server_name.value,admin_user:e.target.admin_user.value,password:e.target.password.value})});toast('Einrichtung abgeschlossen');loginView()}catch(x){$('#err').textContent=x.message}}}
 function loginView(){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card" id="login"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><h1>Willkommen zurück.</h1><div class="muted">Dein schlanker Media Server.</div><label class="field">Benutzer<input name="u" placeholder="Benutzername" autocomplete="username"></label><label class="field">Passwort<input name="p" type="password" autocomplete="current-password"></label><button class="btn primary">Anmelden</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#login').onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{method:'POST',body:JSON.stringify({Username:e.target.u.value,Password:e.target.p.value})});await boot()}catch(x){$('#err').textContent=x.message}}}
-function shell(){let p=state.activeProfile||state.profiles[0]||{name:'Profil',avatar:'🍿'};document.querySelector('#app').innerHTML=`<div class="shell theater-shell"><aside class="side side-rail"><div class="rail-logo"><img src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><nav class="nav rail-nav"><button data-v="home" class="active" title="Startseite"><span class="nav-icon">⌂</span><span class="rail-label">Start</span></button><button data-v="movies" title="Filme"><span class="nav-icon">▣</span><span class="rail-label">Filme</span></button><button data-v="mylist" title="Meine Liste"><span class="nav-icon">♥</span><span class="rail-label">Liste</span></button><button data-v="admin" title="Verwaltung"><span class="nav-icon">⚙</span><span class="rail-label">Admin</span></button></nav><div class="rail-bottom"><span class="side-server-dot"></span><span class="rail-version">v${esc(state.system?.version||'dev')}</span></div></aside><main class="main theater-main"><header class="top theater-top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Was willst du sehen?"></div><div class="top-actions"><button class="profile-pill" id="profileMenu"><span class="profile-pill-avatar">${esc(p.avatar||'🍿')}</span><span class="profile-pill-copy"><b>${esc(p.name||'Profil')}</b><small>Profil wechseln</small></span><span class="profile-chevron">⌄</span></button><button class="btn ghost cinema-toggle" id="cinema" title="Kino-Fokus">◩ Kino</button><span class="status"><i class="dot"></i> Online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></div></header><div id="content" class="content theater-content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};$('#profileMenu').onclick=()=>showProfileSwitcher();$('#cinema').onclick=toggleCinemaMode;let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{stopHeroRotation();state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';movieDecade='all';renderMovies()},180)}}
-async function boot(){try{const setup=await fetch('/api/setup/status').then(r=>r.json());if(!setup.setup_done){setupView(setup);return}state.system=await api('/api/system');let profileInfo=await api('/api/profiles');state.profiles=profileInfo.profiles||[];state.profileSelected=!!profileInfo.selected;state.activeProfile=state.profiles.find(p=>p.id===profileInfo.active_id)||state.profiles[0]||null;state.media=await api('/api/media');state.libs=await api('/api/libraries');shell();renderHome();if(state.profiles.length>1&&!state.profileSelected)setTimeout(()=>showProfileSwitcher(),80)}catch(e){if(e.message!=='unauthorized')loginView()}}
-async function view(v,b){currentView=v;document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));if(v!=='home')stopHeroRotation();try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='mylist')renderMyList();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
+function shell(){let p=state.activeProfile||state.profiles[0]||{name:'Profil',avatar:'🍿'};document.querySelector('#app').innerHTML=`<div class="shell theater-shell"><aside class="side side-rail"><div class="rail-logo"><img src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><nav class="nav rail-nav"><button data-v="home" class="active" title="Startseite"><span class="nav-icon">⌂</span><span class="rail-label">Start</span></button><button data-v="movies" title="Filme"><span class="nav-icon">▣</span><span class="rail-label">Filme</span></button><button data-v="series" title="Serien"><span class="nav-icon">▤</span><span class="rail-label">Serien</span></button><button data-v="mylist" title="Meine Liste"><span class="nav-icon">♥</span><span class="rail-label">Liste</span></button><button data-v="admin" title="Verwaltung"><span class="nav-icon">⚙</span><span class="rail-label">Admin</span></button></nav><div class="rail-bottom"><span class="side-server-dot"></span><span class="rail-version">v${esc(state.system?.version||'dev')}</span></div></aside><main class="main theater-main"><header class="top theater-top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Was willst du sehen?"></div><div class="top-actions"><button class="profile-pill" id="profileMenu"><span class="profile-pill-avatar">${esc(p.avatar||'🍿')}</span><span class="profile-pill-copy"><b>${esc(p.name||'Profil')}</b><small>Profil wechseln</small></span><span class="profile-chevron">⌄</span></button><button class="btn ghost cinema-toggle" id="cinema" title="Kino-Fokus">◩ Kino</button><span class="status"><i class="dot"></i> Online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></div></header><div id="content" class="content theater-content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};$('#profileMenu').onclick=()=>showProfileSwitcher();$('#cinema').onclick=toggleCinemaMode;let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{stopHeroRotation();state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';movieDecade='all';renderMovies()},180)}}
+async function boot(){try{const setup=await fetch('/api/setup/status').then(r=>r.json());if(!setup.setup_done){setupView(setup);return}state.system=await api('/api/system');let profileInfo=await api('/api/profiles');state.profiles=profileInfo.profiles||[];state.profileSelected=!!profileInfo.selected;state.activeProfile=state.profiles.find(p=>p.id===profileInfo.active_id)||state.profiles[0]||null;state.media=await api('/api/media');state.series=await api('/api/series');state.libs=await api('/api/libraries');shell();renderHome();if(state.profiles.length>1&&!state.profileSelected)setTimeout(()=>showProfileSwitcher(),80)}catch(e){if(e.message!=='unauthorized')loginView()}}
+async function view(v,b){currentView=v;document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));if(v!=='home')stopHeroRotation();try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='series')renderSeries();if(v==='mylist')renderMyList();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
 function profileByID(id){return state.profiles.find(p=>p.id===id)}
 function avatarChoices(){return ['🍿','🎬','😎','🚀','🦊','🐼','🤠','👾','🛸','🔥','⭐','🎧']}
 async function reloadProfiles(){
@@ -19,6 +19,7 @@ async function selectProfile(id){
   await api('/api/profiles/select',{method:'POST',body:JSON.stringify({profile_id:id})});
   await reloadProfiles();
   state.media=await api('/api/media');
+  state.series=await api('/api/series');
   document.querySelectorAll('.profile-modal').forEach(x=>x.remove());
   shell();renderHome();toast('Profil gewechselt');
 }
@@ -72,7 +73,8 @@ function miniPoster(m,index){if(!m)return '';return `<button class="hero-mini" o
 function stopHeroRotation(){clearTimeout(heroTimer);heroTimer=null}
 function setHero(index){stopHeroRotation();heroIndex=Math.max(0,index||0);renderHome()}
 function shiftHero(delta){let c=heroCandidates();if(!c.length)return;heroIndex=(heroIndex+delta+c.length)%c.length;renderHome()}
-function heroCandidates(){let rich=state.media.filter(m=>m.backdrop&&m.poster);let fallback=state.media.filter(m=>m.backdrop||m.poster);return (rich.length?rich:fallback).slice(0,8)}
+function movieMedia(){return state.media.filter(m=>m.kind!=='episode')}
+function heroCandidates(){let movies=movieMedia();let rich=movies.filter(m=>m.backdrop&&m.poster);let fallback=movies.filter(m=>m.backdrop||m.poster);return (rich.length?rich:fallback).slice(0,8)}
 function scheduleHeroRotation(){stopHeroRotation();let c=heroCandidates();if(c.length<2)return;heroTimer=setTimeout(()=>{heroIndex=(heroIndex+1)%c.length;renderHome()},12000)}
 function toggleCinemaMode(){document.body.classList.toggle('cinema-focus');let b=$('#cinema');if(b)b.textContent=document.body.classList.contains('cinema-focus')?'◫ Zurück':'◩ Kino'}
 function featureStrip(items){if(!items.length)return '';return `<section class="feature-strip">${items.slice(0,3).map((m,i)=>`<article class="feature-tile" onclick="detail(${m.id})"><div class="feature-bg" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"></div><div class="feature-shade"></div><div class="feature-copy"><span>0${i+1}</span><strong>${esc(m.title)}</strong><small>${m.year||'Film'} · Mehr entdecken</small></div></article>`).join('')}</section>`}
@@ -109,23 +111,25 @@ function renderMyList(){
   </section>`
 }
 
-function pickSomething(){let pool=state.media.filter(m=>!m.missing);if(!pool.length){toast('Noch keine Filme vorhanden');return}let unseen=pool.filter(m=>mediaProgress(m)<1),choices=unseen.length?unseen:pool,m=choices[Math.floor(Math.random()*choices.length)];detail(m.id)}
+function pickSomething(){let pool=movieMedia().filter(m=>!m.missing);if(!pool.length){toast('Noch keine Filme vorhanden');return}let unseen=pool.filter(m=>mediaProgress(m)<1),choices=unseen.length?unseen:pool,m=choices[Math.floor(Math.random()*choices.length)];detail(m.id)}
 
 function renderHome(){
-  let continueItems=state.media.filter(m=>m.progress>1&&m.progress<95).slice(0,12);
-  let newest=state.media.slice(0,18);
-  let unseen=state.media.filter(m=>mediaProgress(m)<1).slice(0,14);
-  let classics=state.media.filter(m=>m.year&&m.year<2000).slice(0,14);
-  let modern=state.media.filter(m=>m.year>=2010).slice(0,14);
-  let favorites=state.media.filter(m=>m.favorite).slice(0,14);
-  let history=historyItems().slice(0,14);
+  let movies=movieMedia();
+  let continueItems=movies.filter(m=>m.progress>1&&m.progress<95).slice(0,12);
+  let newest=movies.slice(0,18);
+  let unseen=movies.filter(m=>mediaProgress(m)<1).slice(0,14);
+  let classics=movies.filter(m=>m.year&&m.year<2000).slice(0,14);
+  let modern=movies.filter(m=>m.year>=2010).slice(0,14);
+  let favorites=movies.filter(m=>m.favorite).slice(0,14);
+  let history=historyItems().filter(m=>m.kind!=='episode').slice(0,14);
+  let seriesContinue=state.series.filter(x=>x.next_episode&&x.next_episode.progress>1&&x.next_episode.progress<95).slice(0,8);
   let heroes=heroCandidates();
   if(heroes.length&&heroIndex>=heroes.length)heroIndex=0;
   let hero=heroes[heroIndex]||continueItems.find(m=>m.backdrop)||state.media[0];
   let heroPct=hero?mediaProgress(hero):0,heroResume=hero&&hero.position>20&&hero.duration>0&&heroPct<95;
-  let watchedCount=state.media.filter(m=>mediaProgress(m)>=95).length;
+  let watchedCount=movies.filter(m=>mediaProgress(m)>=95).length;
   let spotlight=heroes.filter((_,i)=>i!==heroIndex).slice(0,3);
-  let showcase=[...state.media.filter(m=>m.backdrop&&m.id!==hero?.id)].slice(0,3);
+  let showcase=[...movies.filter(m=>m.backdrop&&m.id!==hero?.id)].slice(0,3);
   $('#content').innerHTML=`
     ${hero?`<section class="immersive-hero" onmouseenter="stopHeroRotation()" onmouseleave="scheduleHeroRotation()">
       <div class="immersive-bg" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div>
@@ -147,11 +151,12 @@ function renderHome(){
         <div class="hero-dots">${heroes.map((_,i)=>`<button class="${i===heroIndex?'active':''}" onclick="setHero(${i})" aria-label="Spotlight ${i+1}"></button>`).join('')}</div>
       </div>
       <div class="hero-stack"><div class="hero-stack-label">ALS NÄCHSTES</div>${spotlight.map(m=>miniPoster(m,heroes.indexOf(m))).join('')}</div>
-      <div class="immersive-stats"><span><b>${state.media.length}</b><small>Filme</small></span><span><b>${watchedCount}</b><small>gesehen</small></span><span><b>${continueItems.length}</b><small>offen</small></span></div>
+      <div class="immersive-stats"><span><b>${movies.length}</b><small>Filme</small></span><span><b>${watchedCount}</b><small>gesehen</small></span><span><b>${continueItems.length}</b><small>offen</small></span></div>
     </section>`:''}
     <div class="shelf-zone">
       ${featureStrip(showcase)}
       ${homeSection('Weiterschauen',continueItems,'DEIN FORTSCHRITT')}
+      ${seriesHomeSection(seriesContinue)}
       ${homeSection('Meine Liste',favorites,'VON DIR GEMERKT')}
       ${homeSection('Zuletzt angesehen',history,'DEINE LETZTEN FILMABENDE')}
       ${homeSection('Frisch eingetroffen',newest,'NEU IN DEINER SAMMLUNG')}
@@ -159,13 +164,13 @@ function renderHome(){
       ${homeSection('Moderne Favoriten',modern,'AB 2010')}
       ${homeSection('Noch ungesehen',unseen,'NOCH NICHT ENTDECKT')}
     </div>
-    ${!state.media.length?'<div class="empty home-empty">Noch keine Medien. Lege unter Verwaltung eine Bibliothek an.</div>':''}
+    ${!movies.length&&!state.series.length?'<div class="empty home-empty">Noch keine Medien. Lege unter Verwaltung eine Bibliothek an.</div>':''}
   `;
   scheduleHeroRotation()
 }
 
 function filteredMovies(){
-  let items=state.media.slice();
+  let items=movieMedia().slice();
   if(movieFilter==='unseen')items=items.filter(m=>mediaProgress(m)<1);
   if(movieFilter==='continue')items=items.filter(m=>m.progress>1&&m.progress<95);
   if(movieFilter==='watched')items=items.filter(m=>mediaProgress(m)>=95);
@@ -180,13 +185,13 @@ function setMovieDecade(decade){movieDecade=decade;renderMovies()}
 function setMovieView(view){movieView=view;renderMovies()}
 function renderMovies(){
   if(!$('#content'))return;
-  let items=filteredMovies(),watched=state.media.filter(m=>mediaProgress(m)>=95).length,continuing=state.media.filter(m=>m.progress>1&&m.progress<95).length;
+  let movies=movieMedia(),items=filteredMovies(),watched=movies.filter(m=>mediaProgress(m)>=95).length,continuing=movies.filter(m=>m.progress>1&&m.progress<95).length;
   let filters=[['all','Alle'],['unseen','Ungesehen'],['continue','Weiterschauen'],['watched','Gesehen']];
-  let decades=[1970,1980,1990,2000,2010,2020].filter(d=>state.media.some(m=>m.year>=d&&m.year<d+10));
+  let decades=[1970,1980,1990,2000,2010,2020].filter(d=>movies.some(m=>m.year>=d&&m.year<d+10));
   $('#content').innerHTML=`<section class="movies-page theater-library">
     <div class="library-aurora"></div>
     <div class="movies-heading">
-      <div><div class="section-kicker">BUDDYFLIX ARCHIV</div><h1>Deine Filme.</h1><p>${state.media.length} Titel auf deinem Server · ${watched} gesehen · ${continuing} angefangen</p></div>
+      <div><div class="section-kicker">BUDDYFLIX ARCHIV</div><h1>Deine Filme.</h1><p>${movies.length} Filme auf deinem Server · ${watched} gesehen · ${continuing} angefangen</p></div>
       <button class="btn primary surprise-btn" onclick="pickSomething()">⤨ Überrasch mich</button>
     </div>
     <div class="library-toolbar">
@@ -204,6 +209,29 @@ function renderMovies(){
   </section>`
 }
 
+function seriesArtwork(show){let ep=show.next_episode||(show.seasons?.[0]?.episodes?.[0]);return show.backdrop||show.poster||ep?.backdrop||ep?.poster||''}
+function seriesHomeSection(items){
+  if(!items.length)return '';
+  return `<section class="home-section theater-shelf series-shelf"><div class="rowhead"><div><div class="shelf-kicker">DEINE SERIEN</div><h2>Serien weiterschauen</h2></div><span class="rail-count">${items.length}</span></div><div class="series-rail">${items.map(seriesCard).join('')}</div></section>`
+}
+function seriesCard(show){
+  let art=seriesArtwork(show),next=show.next_episode,pct=next?mediaProgress(next):0;
+  return `<article class="series-card" onclick="openSeries('${encodeURIComponent(show.key)}')"><div class="series-card-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-card-shade"></div><div class="series-card-copy"><span>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen</span><h3>${esc(show.title)}</h3>${next?"<small>Als Nächstes: S"+String(next.season||0).padStart(2,'0')+"E"+String(next.episode||0).padStart(2,'0')+" · "+esc(next.title)+"</small>":''}</div>${pct>1&&pct<95?"<div class=\"series-card-progress\"><i style=\"width:"+pct+"%\"></i></div>":''}</article>`
+}
+function renderSeries(query=''){
+  currentView='series';stopHeroRotation();
+  let q=String(query||'').trim().toLowerCase(),items=state.series.filter(x=>!q||x.title.toLowerCase().includes(q));
+  let episodes=items.reduce((n,x)=>n+x.episode_count,0),seasons=items.reduce((n,x)=>n+x.season_count,0);
+  $('#content').innerHTML=`<section class="series-page"><div class="series-page-head"><div><div class="section-kicker">BUDDYFLIX SERIEN</div><h1>Serien.</h1><p>${items.length} Serien · ${seasons} Staffeln · ${episodes} Folgen</p></div></div>${items.length?"<div class=\"series-grid\">"+items.map(seriesCard).join('')+"</div>":"<div class=\"series-empty\"><span>▤</span><h2>Noch keine Serien gefunden.</h2><p>Lege in der Verwaltung eine Bibliothek vom Typ „Serien“ an. BuddyFlix erkennt S01E01- und 1x01-Dateinamen automatisch.</p></div>"}</section>`
+}
+function openSeries(encodedKey){
+  let key=decodeURIComponent(encodedKey),show=state.series.find(x=>x.key===key);if(!show)return;
+  let art=seriesArtwork(show),el=document.createElement('div');el.className='series-detail-modal';
+  let seasons=show.seasons||[],active=show.next_episode?.season??seasons[0]?.number??0;
+  el.innerHTML=`<div class="series-detail"><div class="series-detail-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-detail-fade"></div><button class="close series-detail-close">×</button><div class="series-detail-head"><div class="section-kicker">SERIE</div><h1>${esc(show.title)}</h1><p>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen · ${show.watched_count} gesehen</p></div><div class="series-season-tabs">${seasons.map(x=>"<button class=\""+(x.number===active?'active':'')+"\" data-season=\""+x.number+"\">"+(x.number?'Staffel '+x.number:'Extras')+"</button>").join('')}</div><div class="series-episodes"></div></div>`;
+  document.body.append(el);let close=closeWithEscape(el);el.querySelector('.series-detail-close').onclick=close;
+  const draw=n=>{let season=seasons.find(x=>x.number===n)||seasons[0];el.querySelectorAll('.series-season-tabs button').forEach(b=>b.classList.toggle('active',Number(b.dataset.season)===season.number));el.querySelector('.series-episodes').innerHTML=(season?.episodes||[]).map(ep=>{let pct=mediaProgress(ep),resume=ep.position>20&&ep.duration>0&&pct<95;return `<article class="episode-row"><button class="episode-play" onclick="play(${ep.id},'${resume?'resume':'start'}')">▶</button><div class="episode-number">E${String(ep.episode||0).padStart(2,'0')}</div><div class="episode-copy"><strong>${esc(ep.title||ep.episode_title||'Episode')}</strong><span>${pct>=95?'✓ Gesehen':resume?(Math.round(pct)+'% angesehen'):'Noch nicht angesehen'}</span></div><button class="episode-info" onclick="detail(${ep.id})">ⓘ</button>${resume?"<div class=\"episode-progress\"><i style=\"width:"+pct+"%\"></i></div>":''}</article>`}).join('')};el.querySelectorAll('.series-season-tabs button').forEach(b=>b.onclick=()=>draw(Number(b.dataset.season)));draw(active)
+}
 async function renderAdmin(){
   const content=$('#content');
   if(content) content.innerHTML='<div class="muted">Verwaltung wird geladen…</div>';
@@ -392,7 +420,7 @@ async function saveTMDb(e){e.preventDefault();const key=e.target.tmdb_api_key.va
 async function clearTMDb(){if(!confirm('Eigenen TMDb-Override wirklich entfernen und wieder den BuddyFlix-Standardzugang verwenden?'))return;try{await api('/api/settings',{method:'PUT',body:JSON.stringify({server_name:state.settings.server_name,admin_user:state.settings.admin_user,tmdb_api_key:''})});toast('TMDb-Override entfernt');renderAdmin()}catch(x){toast(x.message)}}
 async function changePassword(e){e.preventDefault();if(e.target.next.value!==e.target.repeat.value){toast('Die neuen Passwörter stimmen nicht überein');return}try{await api('/api/password',{method:'POST',body:JSON.stringify({current:e.target.current.value,new:e.target.next.value})});toast('Passwort geändert – bitte neu anmelden');setTimeout(loginView,700)}catch(x){toast(x.message)}}
 async function doScan(){let b=$('#scan');b.disabled=true;b.textContent='Scan läuft…';try{let r=await api('/api/scan',{method:'POST'});let msg=`${r.files_seen} Mediendateien gefunden`;if(r.skipped_system_dirs)msg+=` · ${r.skipped_system_dirs} Systemordner übersprungen`;if(r.skipped_libraries?.length)msg+=` · Bibliotheken übersprungen: ${r.skipped_libraries.join(', ')}`;toast(msg);await refresh();renderAdmin()}catch(x){toast(x.message)}finally{b.disabled=false}}
-async function refresh(){state.media=await api('/api/media');state.libs=await api('/api/libraries');state.system=await api('/api/system')}
+async function refresh(){state.media=await api('/api/media');state.series=await api('/api/series');state.libs=await api('/api/libraries');state.system=await api('/api/system')}
 function fmtTime(sec){sec=Math.max(0,Math.floor(Number(sec)||0));let h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`}
 function humanSize(bytes){bytes=Number(bytes)||0;if(!bytes)return '';let units=['B','KB','MB','GB','TB'],i=0;while(bytes>=1024&&i<units.length-1){bytes/=1024;i++}return (i<3?Math.round(bytes):bytes.toFixed(bytes<10?1:0))+' '+units[i]}
 function mediaProgress(m){return Math.max(0,Math.min(100,Number(m.progress)||0))}
