@@ -274,8 +274,7 @@ private fun ConnectionScreen(
         Column(Modifier.width(460.dp)) {
             Text("BUDDYFLIX", color = Accent, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
             Spacer(Modifier.height(12.dp))
-            Text("Dein Kino.
-Jetzt auf Fire TV.", color = Color.White, fontSize = 42.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
+            Text("Dein Kino.\\nJetzt auf Fire TV.", color = Color.White, fontSize = 42.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(18.dp))
             Text(
                 "Einmal mit deinem BuddyFlix-Server verbinden. Danach merkt sich der Fernseher sein Gerätetoken.",
