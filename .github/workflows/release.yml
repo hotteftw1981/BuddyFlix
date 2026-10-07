@@ -4,11 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'cmd/**'
-      - 'internal/**'
-      - 'web/**'
-      - 'go.mod'
-      - 'go.sum'
+      - 'internal/app/version.go'
   workflow_dispatch:
 
 permissions:
@@ -17,6 +13,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(sed -n 's/^const Version = "\\([^"]*\\)"/\\1/p' internal/app/app.go)"
+          VERSION="$(sed -n 's/^const Version = "\\([^"]*\\)"/\\1/p' internal/app/version.go)"
           if [ -z "$VERSION" ]; then
             echo "Could not determine BuddyFlix version."
             exit 1
@@ -55,7 +52,7 @@ jobs:
           CURRENT="${{ steps.version.outputs.version }}"
           PREVIOUS=""
           if git rev-parse HEAD^ >/dev/null 2>&1; then
-            PREVIOUS="$(git show HEAD^:internal/app/app.go 2>/dev/null | sed -n 's/^const Version = "\\([^"]*\\)"/\\1/p' || true)"
+            PREVIOUS="$(git show HEAD^:internal/app/version.go 2>/dev/null | sed -n 's/^const Version = "\\([^"]*\\)"/\\1/p' || true)"
           fi
           if [ "$CURRENT" = "$PREVIOUS" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"

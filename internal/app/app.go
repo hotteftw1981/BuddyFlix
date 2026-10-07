@@ -21,7 +21,6 @@ import (
 	"time"
 )
 
-const Version = "0.1.0"
 
 type Config struct{ ListenAddr, DataDir, AdminUser, AdminPassword, TMDBAPIKey string }
 
