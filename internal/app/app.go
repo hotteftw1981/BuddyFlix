@@ -707,9 +707,9 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request) {
 	next := sha256.Sum256([]byte(x.New))
 	s.mu.Lock()
 	s.st.Settings.AdminPassHash = hex.EncodeToString(next[:])
-	e := s.saveLocked()
 	s.sessions = map[string]time.Time{}
 	s.st.DeviceTokens = nil
+	e := s.saveLocked()
 	s.mu.Unlock()
 	if e != nil {
 		jsonErr(w, 500, e.Error())
