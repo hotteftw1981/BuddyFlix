@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,6 +82,11 @@ type Media struct {
 	Duration           float64           `json:"duration"`
 	ProgressUpdated    string            `json:"progress_updated,omitempty"`
 	Favorite           bool              `json:"favorite,omitempty"`
+	Kind               string            `json:"kind,omitempty"`
+	SeriesTitle        string            `json:"series_title,omitempty"`
+	Season             int               `json:"season,omitempty"`
+	Episode            int               `json:"episode,omitempty"`
+	EpisodeTitle       string            `json:"episode_title,omitempty"`
 }
 type Progress struct {
 	Position float64 `json:"position"`
@@ -93,6 +99,24 @@ type Profile struct {
 	Name    string `json:"name"`
 	Avatar  string `json:"avatar"`
 	Created string `json:"created"`
+}
+
+type SeriesSeason struct {
+	Number   int     `json:"number"`
+	Episodes []Media `json:"episodes"`
+}
+
+type SeriesView struct {
+	Key            string         `json:"key"`
+	Title          string         `json:"title"`
+	SeasonCount    int            `json:"season_count"`
+	EpisodeCount   int            `json:"episode_count"`
+	WatchedCount   int            `json:"watched_count"`
+	ContinueCount  int            `json:"continue_count"`
+	Poster         string         `json:"poster,omitempty"`
+	Backdrop       string         `json:"backdrop,omitempty"`
+	NextEpisode    *Media         `json:"next_episode,omitempty"`
+	Seasons        []SeriesSeason `json:"seasons"`
 }
 
 type MetadataJob struct {
@@ -255,6 +279,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/libraries", s.auth(s.libraries))
 	s.mux.HandleFunc("/api/scan", s.auth(s.scan))
 	s.mux.HandleFunc("/api/media", s.auth(s.media))
+	s.mux.HandleFunc("/api/series", s.auth(s.series))
 	s.mux.HandleFunc("/api/media/action", s.auth(s.mediaAction))
 	s.mux.HandleFunc("/api/media/cleanup", s.auth(s.mediaCleanup))
 	s.mux.HandleFunc("/api/progress", s.auth(s.progress))
@@ -768,6 +793,55 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 
 var videoExt = map[string]bool{".mp4": true, ".mkv": true, ".m4v": true, ".mov": true, ".avi": true, ".webm": true, ".ts": true, ".m2ts": true}
 var yearRx = regexp.MustCompile(`(?i)[\(\[\. _-](19\d{2}|20\d{2})[\)\]\. _-]`)
+var episodeRx = regexp.MustCompile(`(?i)(?:^|[ ._\-])S(\d{1,2})E(\d{1,3})(?:[ ._\-]|$)`)
+var episodeAltRx = regexp.MustCompile(`(?i)(?:^|[ ._\-])(\d{1,2})x(\d{1,3})(?:[ ._\-]|$)`)
+
+func cleanEpisodeText(v string) string {
+	v = strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(v)
+	return strings.TrimSpace(strings.Join(strings.Fields(v), " "))
+}
+
+func episodeFromPath(root, p string) (series string, season, episode int, episodeTitle string) {
+	base := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+	normalized := strings.NewReplacer(".", " ", "_", " ").Replace(base)
+	loc := episodeRx.FindStringSubmatchIndex(normalized)
+	rx := episodeRx
+	if loc == nil {
+		loc = episodeAltRx.FindStringSubmatchIndex(normalized)
+		rx = episodeAltRx
+	}
+	if loc != nil {
+		m := rx.FindStringSubmatch(normalized[loc[0]:loc[1]])
+		if len(m) >= 3 {
+			season, _ = strconv.Atoi(m[1])
+			episode, _ = strconv.Atoi(m[2])
+		}
+		prefix := cleanEpisodeText(normalized[:loc[0]])
+		suffix := cleanEpisodeText(normalized[loc[1]:])
+		if prefix != "" { series = prefix }
+		if suffix != "" { episodeTitle = cleanLocalMetadataTitle(suffix) }
+	}
+	rel, err := filepath.Rel(root, p)
+	if err == nil {
+		parts := strings.Split(filepath.Clean(rel), string(filepath.Separator))
+		if len(parts) > 1 {
+			first := cleanEpisodeText(parts[0])
+			if first != "" && (series == "" || strings.HasPrefix(strings.ToLower(series), "staffel ") || strings.HasPrefix(strings.ToLower(series), "season ")) {
+				series, _ = titleFromPath(first)
+			}
+		}
+	}
+	if series == "" {
+		parent := cleanEpisodeText(filepath.Base(filepath.Dir(p)))
+		lower := strings.ToLower(parent)
+		if !strings.HasPrefix(lower, "staffel ") && !strings.HasPrefix(lower, "season ") {
+			series, _ = titleFromPath(parent)
+		}
+	}
+	if series == "" { series = "Unbekannte Serie" }
+	if episodeTitle == "" && episode > 0 { episodeTitle = "Episode " + strconv.Itoa(episode) }
+	return strings.TrimSpace(series), season, episode, strings.TrimSpace(episodeTitle)
+}
 
 func titleFromPath(p string) (string, int) {
 	n := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
@@ -864,6 +938,17 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 			seen++
 			foundPaths[file.path] = struct{}{}
 			title, year := titleFromPath(file.path)
+			kind := "movie"
+			seriesTitle, seasonNo, episodeNo, episodeTitle := "", 0, 0, ""
+			switch strings.ToLower(strings.TrimSpace(lib.Type)) {
+			case "shows", "series", "tv":
+				kind = "episode"
+				seriesTitle, seasonNo, episodeNo, episodeTitle = episodeFromPath(lib.Path, file.path)
+				if episodeTitle != "" { title = episodeTitle }
+				year = 0
+			case "other":
+				kind = "other"
+			}
 			found := -1
 			for i := range s.st.Media {
 				if s.st.Media[i].Path == file.path {
@@ -874,6 +959,11 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 			if found >= 0 {
 				s.st.Media[found].LibraryID = lib.ID
 				s.st.Media[found].Missing = false
+				s.st.Media[found].Kind = kind
+				s.st.Media[found].SeriesTitle = seriesTitle
+				s.st.Media[found].Season = seasonNo
+				s.st.Media[found].Episode = episodeNo
+				s.st.Media[found].EpisodeTitle = episodeTitle
 				if strings.TrimSpace(s.st.Media[found].Title) == "" {
 					s.st.Media[found].Title = title
 				}
@@ -887,6 +977,7 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 					ID: s.st.NextMediaID, LibraryID: lib.ID, Path: file.path,
 					Title: title, Year: year, Added: time.Now().Format(time.RFC3339),
 					MTime: file.info.ModTime().Unix(), Size: file.info.Size(),
+					Kind: kind, SeriesTitle: seriesTitle, Season: seasonNo, Episode: episodeNo, EpisodeTitle: episodeTitle,
 				})
 				s.st.NextMediaID++
 			}
@@ -1015,7 +1106,7 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 		if !includeMissing && m.Missing {
 			continue
 		}
-		if q != "" && !strings.Contains(strings.ToLower(m.Title), q) {
+		if q != "" && !strings.Contains(strings.ToLower(m.Title), q) && !strings.Contains(strings.ToLower(m.SeriesTitle), q) {
 			continue
 		}
 		if p, ok := progressMap[m.ID]; ok {
@@ -1032,6 +1123,105 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
+	}
+	jsonOut(w, out)
+}
+
+func (s *Server) series(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" { jsonErr(w, 405, "method not allowed"); return }
+	profileID := s.activeProfileID(r)
+	s.mu.Lock()
+	progressMap := s.profileProgressLocked(profileID)
+	favorites := s.profileFavoritesLocked(profileID)
+	s.mu.Unlock()
+
+	s.mu.RLock()
+	episodes := make([]Media, 0)
+	for _, m := range s.st.Media {
+		if m.Missing || m.Kind != "episode" { continue }
+		if p, ok := progressMap[m.ID]; ok {
+			m.Position = p.Position
+			m.Duration = p.Duration
+			m.ProgressUpdated = p.Updated
+			if p.Duration > 0 { m.Progress = p.Position / p.Duration * 100 }
+		}
+		m.Favorite = favorites[m.ID]
+		episodes = append(episodes, m)
+	}
+	s.mu.RUnlock()
+
+	sort.SliceStable(episodes, func(i, j int) bool {
+		a, b := episodes[i], episodes[j]
+		if strings.EqualFold(a.SeriesTitle, b.SeriesTitle) {
+			if a.Season == b.Season {
+				if a.Episode == b.Episode { return a.Title < b.Title }
+				return a.Episode < b.Episode
+			}
+			return a.Season < b.Season
+		}
+		return strings.ToLower(a.SeriesTitle) < strings.ToLower(b.SeriesTitle)
+	})
+
+	type builder struct {
+		view SeriesView
+		seasons map[int][]Media
+	}
+	groups := map[string]*builder{}
+	order := make([]string, 0)
+	for _, ep := range episodes {
+		title := strings.TrimSpace(ep.SeriesTitle)
+		if title == "" { title = "Unbekannte Serie" }
+		key := strings.ToLower(title)
+		b := groups[key]
+		if b == nil {
+			b = &builder{view: SeriesView{Key:key, Title:title}, seasons:map[int][]Media{}}
+			groups[key] = b
+			order = append(order, key)
+		}
+		b.view.EpisodeCount++
+		if ep.Progress >= 95 { b.view.WatchedCount++ }
+		if ep.Progress > 1 && ep.Progress < 95 { b.view.ContinueCount++ }
+		if b.view.Poster == "" && ep.Poster != "" { b.view.Poster = ep.Poster }
+		if b.view.Backdrop == "" && ep.Backdrop != "" { b.view.Backdrop = ep.Backdrop }
+		b.seasons[ep.Season] = append(b.seasons[ep.Season], ep)
+	}
+
+	sort.Strings(order)
+	out := make([]SeriesView, 0, len(order))
+	for _, key := range order {
+		b := groups[key]
+		seasonNos := make([]int, 0, len(b.seasons))
+		for n := range b.seasons { seasonNos = append(seasonNos, n) }
+		sort.Ints(seasonNos)
+		for _, n := range seasonNos {
+			b.view.Seasons = append(b.view.Seasons, SeriesSeason{Number:n, Episodes:b.seasons[n]})
+		}
+		b.view.SeasonCount = len(b.view.Seasons)
+		for si := range b.view.Seasons {
+			for ei := range b.view.Seasons[si].Episodes {
+				ep := b.view.Seasons[si].Episodes[ei]
+				if ep.Progress > 1 && ep.Progress < 95 {
+					copy := ep
+					b.view.NextEpisode = &copy
+					break
+				}
+			}
+			if b.view.NextEpisode != nil { break }
+		}
+		if b.view.NextEpisode == nil {
+			for si := range b.view.Seasons {
+				for ei := range b.view.Seasons[si].Episodes {
+					ep := b.view.Seasons[si].Episodes[ei]
+					if ep.Progress < 95 {
+						copy := ep
+						b.view.NextEpisode = &copy
+						break
+					}
+				}
+				if b.view.NextEpisode != nil { break }
+			}
+		}
+		out = append(out, b.view)
 	}
 	jsonOut(w, out)
 }
@@ -1168,7 +1358,7 @@ func (s *Server) metadataBulk(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	ids := make([]int64, 0)
 	for _, m := range s.st.Media {
-		if m.Missing || m.MetadataLocked || mediaHasMetadata(m) { continue }
+		if m.Missing || m.MetadataLocked || m.Kind == "episode" || mediaHasMetadata(m) { continue }
 		ids = append(ids, m.ID)
 	}
 	s.mu.RUnlock()
