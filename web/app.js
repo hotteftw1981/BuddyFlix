@@ -433,6 +433,7 @@ async function detail(id){
   let status=watched?'✓ Gesehen':resumable?'▶ Angefangen':'Noch nicht angesehen';
   let ext=(m.path||'').split('.').pop()?.toUpperCase(),size=m.size?humanSize(m.size):'',source=m.metadata_provider?m.metadata_provider==='thetvdb'?'TheTVDB':m.metadata_provider.toUpperCase():'';
   let tech=[ext,size].filter(Boolean).join(' · ');
+  let isEpisode=m.kind==='episode',episodeTag=isEpisode?('S'+String(m.season||0).padStart(2,'0')+'E'+String(m.episode||0).padStart(2,'0')):'';
   el.innerHTML=`<div class="detail-screen">
     <div class="detail-screen-bg" style="background-image:url('${esc(m.backdrop||m.poster||'')}')"></div>
     <div class="detail-screen-fade"></div>
@@ -440,12 +441,12 @@ async function detail(id){
     <div class="detail-screen-inner">
       ${poster}
       <div class="detail-screen-copy">
-        <div class="detail-kicker">BUDDYFLIX FEATURE</div>
+        <div class="detail-kicker">${isEpisode?esc(m.series_title||'SERIE'):'BUDDYFLIX FEATURE'}</div>
         <h1>${esc(m.title)}</h1>
-        <div class="detail-meta-line"><span>${m.year||'Jahr unbekannt'}</span><span>${status}</span>${m.duration>0?`<span>${fmtTime(m.duration)}</span>`:''}</div>
+        <div class="detail-meta-line">${isEpisode?`<span>${episodeTag}</span>`:`<span>${m.year||'Jahr unbekannt'}</span>`}<span>${status}</span>${m.duration>0?`<span>${fmtTime(m.duration)}</span>`:''}</div>
         <p>${esc(m.overview||'Für diesen Titel wurden noch keine Metadaten geladen. Du kannst ihn trotzdem direkt abspielen oder später identifizieren.')}</p>
         ${resumable?`<div class="detail-progress-xl"><div><b>Weiterschauen</b><span>${fmtTime(m.position)} / ${fmtTime(m.duration)} · ${Math.round(pct)}%</span></div><i><em style="width:${pct}%"></em></i></div>`:''}
-        <div class="detail-screen-actions"><button class="btn primary detail-play" id="p">▶ ${resumable?'Fortsetzen':'Abspielen'}</button><button class="btn ghost detail-favorite ${m.favorite?'active':''}" id="favorite">${m.favorite?'♥ In meiner Liste':'♡ Meine Liste'}</button>${resumable?'<button class="btn ghost" id="restart">↺ Von Anfang</button>':''}<button class="btn ghost" id="meta">◎ Identifizieren</button><button class="btn ghost" id="editmedia">✎ Bearbeiten</button></div>
+        <div class="detail-screen-actions"><button class="btn primary detail-play" id="p">▶ ${resumable?'Fortsetzen':'Abspielen'}</button><button class="btn ghost detail-favorite ${m.favorite?'active':''}" id="favorite">${m.favorite?'♥ In meiner Liste':'♡ Meine Liste'}</button>${resumable?'<button class="btn ghost" id="restart">↺ Von Anfang</button>':''}${isEpisode?'':`<button class="btn ghost" id="meta">◎ Identifizieren</button>`}<button class="btn ghost" id="editmedia">✎ Bearbeiten</button></div>
         <div class="detail-tech">${source?`<span>Quelle <b>${esc(source)}</b></span>`:''}${tech?`<span>${esc(tech)}</span>`:''}</div>
       </div>
     </div>
@@ -456,11 +457,28 @@ async function detail(id){
   el.querySelector('#p').onclick=()=>{close();play(id,resumable?'resume':'start')};
   el.querySelector('#favorite').onclick=async()=>{close();await toggleFavorite(id,!m.favorite)};
   let restart=el.querySelector('#restart');if(restart)restart.onclick=()=>{close();play(id,'start')};
-  el.querySelector('#meta').onclick=()=>{close();identifyMedia(m)};
+  let meta=el.querySelector('#meta');if(meta)meta.onclick=()=>{close();identifyMedia(m)};
   el.querySelector('#editmedia').onclick=()=>{close();editMedia(m)}
 }
 
 function editMedia(m){let el=document.createElement('div');el.className='modal';el.innerHTML=`<div class="modalbox compact"><div class="panel"><div class="panel-title"><div><h3>Medium bearbeiten</h3><p class="muted">Metadaten manuell korrigieren.</p></div><button class="close">×</button></div><form id="mediaedit"><label class="field">Titel<input name="title" value="${esc(m.title)}"></label><label class="field">Jahr<input name="year" type="number" min="1888" max="2100" value="${m.year||''}"></label><label class="field">Beschreibung<textarea name="overview" rows="5">${esc(m.overview||'')}</textarea></label><label class="field">Poster-URL<input name="poster" value="${esc(m.poster||'')}"></label><label class="field">Backdrop-URL<input name="backdrop" value="${esc(m.backdrop||'')}"></label><div class="notice"><strong>Datei:</strong><br><code>${esc(m.path)}</code></div><button class="btn primary">Speichern</button></form></div></div>`;document.body.append(el);let close=closeWithEscape(el);el.querySelector('.close').onclick=close;el.querySelector('#mediaedit').onsubmit=async e=>{e.preventDefault();try{await api('/api/media?id='+m.id,{method:'PUT',body:JSON.stringify({title:e.target.title.value,year:Number(e.target.year.value)||0,overview:e.target.overview.value,poster:e.target.poster.value,backdrop:e.target.backdrop.value})});toast('Medium gespeichert');close();await refresh();renderMovies()}catch(x){toast(x.message)}}}
+function nextEpisodeFor(m){
+  if(m.kind!=='episode'||!m.series_title)return null;
+  let show=state.series.find(x=>String(x.title||'').toLowerCase()===String(m.series_title||'').toLowerCase());
+  if(!show)return null;
+  let episodes=(show.seasons||[]).flatMap(x=>x.episodes||[]).slice().sort((a,b)=>(a.season-b.season)||(a.episode-b.episode));
+  let i=episodes.findIndex(x=>x.id===m.id);
+  return i>=0&&i<episodes.length-1?episodes[i+1]:null
+}
+function nextEpisodePrompt(next){
+  let seconds=10,el=document.createElement('div');el.className='next-episode-modal';
+  let code='S'+String(next.season||0).padStart(2,'0')+'E'+String(next.episode||0).padStart(2,'0');
+  el.innerHTML='<div class="next-episode-card"><div class="resume-kicker">ALS NÄCHSTES</div><h2>'+esc(next.series_title||'Serie')+'</h2><p><strong>'+code+' · '+esc(next.title||'Episode')+'</strong></p><div class="next-count">Start in <b id="count">'+seconds+'</b> Sekunden</div><div class="resume-actions"><button class="btn primary" id="nextplay">▶ Jetzt abspielen</button><button class="btn ghost" id="nextcancel">Abbrechen</button></div></div>';
+  document.body.append(el);
+  let timer=setInterval(()=>{seconds--;let c=el.querySelector('#count');if(c)c.textContent=seconds;if(seconds<=0){clearInterval(timer);el.remove();play(next.id,'start')}},1000);
+  el.querySelector('#nextplay').onclick=()=>{clearInterval(timer);el.remove();play(next.id,'start')};
+  el.querySelector('#nextcancel').onclick=()=>{clearInterval(timer);el.remove()};
+}
 async function resumePrompt(m){
   let el=document.createElement('div');el.className='modal resume-modal';
   el.innerHTML=`<div class="resume-card"><button class="close" aria-label="Schließen">×</button><div class="resume-kicker">WEITERSCHAUEN</div><h2>${esc(m.title)}</h2><p>Du warst bei <strong>${fmtTime(m.position)}</strong> von ${fmtTime(m.duration)}.</p><div class="resume-actions"><button class="btn primary" id="resume">▶ Fortsetzen</button><button class="btn ghost" id="restart">Von Anfang</button></div></div>`;
@@ -476,7 +494,8 @@ async function play(id,mode='auto'){
 }
 function openPlayer(m,startAt=0){
   let el=document.createElement('div');el.className='videoModal';
-  el.innerHTML=`<div class="video-titlebar"><strong>${esc(m.title)}</strong><span>${m.year||''}</span></div><video controls autoplay playsinline src="/stream/${m.id}"></video><button class="close player-close" aria-label="Player schließen">×</button>`;
+  let playerMeta=m.kind==='episode'?((m.series_title||'Serie')+' · S'+String(m.season||0).padStart(2,'0')+'E'+String(m.episode||0).padStart(2,'0')):(m.year||'');
+  el.innerHTML=`<div class="video-titlebar"><strong>${esc(m.title)}</strong><span>${esc(playerMeta)}</span></div><video controls autoplay playsinline src="/stream/${m.id}"></video><button class="close player-close" aria-label="Player schließen">×</button>`;
   document.body.append(el);let v=el.querySelector('video'),last=0,closed=false;
   const finish=()=>{if(closed)return;closed=true;saveProgress(m.id,v.currentTime,v.duration);v.pause();document.removeEventListener('keydown',key);el.remove();refresh()};
   const key=e=>{if(e.key==='Escape')finish()};
@@ -484,7 +503,7 @@ function openPlayer(m,startAt=0){
   v.onloadedmetadata=()=>{if(startAt>0&&startAt<v.duration-20)v.currentTime=startAt};
   v.ontimeupdate=()=>{if(Date.now()-last>10000){last=Date.now();saveProgress(m.id,v.currentTime,v.duration)}};
   v.onpause=()=>{if(!closed)saveProgress(m.id,v.currentTime,v.duration)};
-  v.onended=async()=>{await saveProgress(m.id,v.duration,v.duration);await refresh()};
+  v.onended=async()=>{if(closed)return;closed=true;await saveProgress(m.id,v.duration,v.duration);v.pause();document.removeEventListener('keydown',key);el.remove();await refresh();let next=nextEpisodeFor(m);if(next)nextEpisodePrompt(next)};
   el.querySelector('.close').onclick=finish
 }
 async function saveProgress(id,p,d){if(!Number.isFinite(d)||d<=0)return;try{await api('/api/progress',{method:'POST',body:JSON.stringify({media_id:id,Position:p,Duration:d})})}catch{}}
