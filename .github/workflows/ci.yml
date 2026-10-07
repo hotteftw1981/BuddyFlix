@@ -96,7 +96,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="$LDFLAGS" -o buddyflix-armhf ./cmd/buddyflix
 
       - name: Install QDK 2.3.11
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/develop'
         shell: bash
         run: |
           set -euo pipefail
@@ -105,7 +105,7 @@ jobs:
           sudo bash ./InstallToUbuntu.sh install
 
       - name: Build QNAP ARMHF dev QPKG
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/develop'
         env:
           APP_VERSION: ${{ steps.version.outputs.app_version }}
           QPKG_VERSION: ${{ steps.version.outputs.qpkg_version }}
@@ -135,7 +135,7 @@ jobs:
           sha256sum "$OUT" > "$OUT.sha256"
 
       - name: Upload QNAP dev QPKG
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/develop'
         uses: actions/upload-artifact@v4
         with:
           name: BuddyFlix-${{ steps.version.outputs.app_version }}-QNAP-ARMHF
