@@ -2,11 +2,13 @@ name: BuddyFlix CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
     paths:
       - 'cmd/**'
       - 'internal/**'
       - 'web/**'
+      - 'packaging/qnap/**'
+      - '.github/workflows/ci.yml'
       - 'go.mod'
       - 'go.sum'
   pull_request:
@@ -15,6 +17,8 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'web/**'
+      - 'packaging/qnap/**'
+      - '.github/workflows/ci.yml'
       - 'go.mod'
       - 'go.sum'
   workflow_dispatch:
@@ -27,9 +31,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-build:
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,18 +43,6 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: true
-
-      - name: Define build versions
-        id: version
-        shell: bash
-        run: |
-          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
-            echo "app_version=0.1.1-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-            echo "qpkg_version=0.1.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          else
-            echo "app_version=0.1.1-dev" >> "$GITHUB_OUTPUT"
-            echo "qpkg_version=0.1.1" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Test
         run: go test ./...
@@ -69,18 +61,33 @@ jobs:
             echo "BuddyFlix metadata project credential: missing"
           fi
 
-      - name: Build linux amd64
-        env:
-          BUDDYFLIX_TVDB_API_KEY: ${{ secrets.BUDDYFLIX_TVDB_API_KEY }}
-          APP_VERSION: ${{ steps.version.outputs.app_version }}
+  qpkg:
+    name: Build QNAP ARMHF QPKG
+    needs: checks
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && contains(github.event.head_commit.message, '[qpkg]'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: true
+
+      - name: Define dev build versions
+        id: version
         shell: bash
         run: |
-          set -euo pipefail
-          LDFLAGS="-s -w -X buddyflix/internal/app.Version=$APP_VERSION"
-          if [ -n "${BUDDYFLIX_TVDB_API_KEY:-}" ]; then
-            LDFLAGS="$LDFLAGS -X buddyflix/internal/app.BuiltinTVDBAPIKey=$BUDDYFLIX_TVDB_API_KEY"
-          fi
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o buddyflix-amd64 ./cmd/buddyflix
+          echo "app_version=0.1.1-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "qpkg_version=0.1.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Build linux ARMHF
         env:
@@ -96,7 +103,6 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="$LDFLAGS" -o buddyflix-armhf ./cmd/buddyflix
 
       - name: Install QDK 2.3.11
-        if: github.ref == 'refs/heads/develop'
         shell: bash
         run: |
           set -euo pipefail
@@ -105,7 +111,6 @@ jobs:
           sudo bash ./InstallToUbuntu.sh install
 
       - name: Build QNAP ARMHF dev QPKG
-        if: github.ref == 'refs/heads/develop'
         env:
           APP_VERSION: ${{ steps.version.outputs.app_version }}
           QPKG_VERSION: ${{ steps.version.outputs.qpkg_version }}
@@ -135,11 +140,10 @@ jobs:
           sha256sum "$OUT" > "$OUT.sha256"
 
       - name: Upload QNAP dev QPKG
-        if: github.ref == 'refs/heads/develop'
         uses: actions/upload-artifact@v4
         with:
           name: BuddyFlix-${{ steps.version.outputs.app_version }}-QNAP-ARMHF
           path: |
             dist/*.qpkg
             dist/*.sha256
-          retention-days: 7
+          retention-days: 2
