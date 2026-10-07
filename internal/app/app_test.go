@@ -860,3 +860,63 @@ func TestShowsLibraryScannerMarksEpisodes(t *testing.T) {
 		t.Fatalf("episode metadata not parsed: %+v", m)
 	}
 }
+
+
+func TestProgressNormalizesCompletionAndRejectsUnknownMedia(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{{ID:1, Title:"Movie", Path:"/movie.mkv"}}
+	s.st.NextMediaID = 2
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/progress", bytes.NewBufferString(`{"media_id":1,"Position":96,"Duration":100}`))
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"1"})
+	rec := httptest.NewRecorder()
+	s.progress(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("progress failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	s.mu.RLock()
+	p := s.st.Progress[1]
+	s.mu.RUnlock()
+	if p.Position != 100 || p.Duration != 100 || p.Updated == "" {
+		t.Fatalf("near-end progress should be normalized to watched: %+v", p)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/progress", bytes.NewBufferString(`{"media_id":999,"Position":10,"Duration":100}`))
+	rec = httptest.NewRecorder()
+	s.progress(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown media should return 404, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSeriesExposesLastActivityAndNextUnwatchedEpisode(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{
+		{ID:1, Kind:"episode", SeriesTitle:"Dark", Season:1, Episode:1, Title:"Geheimnisse"},
+		{ID:2, Kind:"episode", SeriesTitle:"Dark", Season:1, Episode:2, Title:"Lügen"},
+	}
+	s.st.Progress[1] = Progress{Position:100, Duration:100, Updated:"2026-10-07T18:30:00Z"}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/series", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"1"})
+	rec := httptest.NewRecorder()
+	s.series(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("series failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var out []SeriesView
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil { t.Fatal(err) }
+	if len(out) != 1 { t.Fatalf("expected one series, got %+v", out) }
+	if out[0].LastActivity != "2026-10-07T18:30:00Z" {
+		t.Fatalf("last activity missing: %+v", out[0])
+	}
+	if out[0].NextEpisode == nil || out[0].NextEpisode.ID != 2 || out[0].NextEpisode.Progress != 0 {
+		t.Fatalf("expected next unwatched episode after completed episode: %+v", out[0].NextEpisode)
+	}
+}
