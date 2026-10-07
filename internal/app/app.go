@@ -144,6 +144,13 @@ type Settings struct {
 	TVDBAPIKey     string `json:"tvdb_api_key,omitempty"`
 }
 
+type DeviceToken struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	TokenHash string `json:"token_hash"`
+	Created   string `json:"created"`
+}
+
 type Store struct {
 	ServerID        string                       `json:"server_id"`
 	Settings        Settings                     `json:"settings"`
@@ -156,6 +163,7 @@ type Store struct {
 	Progress        map[int64]Progress           `json:"progress"`
 	ProfileProgress  map[int64]map[int64]Progress `json:"profile_progress,omitempty"`
 	ProfileFavorites map[int64]map[int64]bool     `json:"profile_favorites,omitempty"`
+	DeviceTokens     []DeviceToken                 `json:"device_tokens,omitempty"`
 }
 
 type Server struct {
@@ -271,6 +279,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/info", s.info)
 	s.mux.HandleFunc("/api/v1/info", s.info)
 	s.mux.HandleFunc("/api/login", s.login)
+	s.mux.HandleFunc("/api/v1/device/login", s.deviceLogin)
+	s.mux.HandleFunc("/api/v1/device/logout", s.auth(s.deviceLogout))
+	s.mux.HandleFunc("/api/v1/devices", s.auth(s.devices))
 	s.mux.HandleFunc("/api/logout", s.auth(s.logout))
 	s.mux.HandleFunc("/api/health", s.health)
 	s.mux.HandleFunc("/api/system", s.auth(s.system))
@@ -309,6 +320,18 @@ func jsonErr(w http.ResponseWriter, c int, m string) {
 	w.WriteHeader(c)
 	jsonOut(w, map[string]string{"error": m})
 }
+func (s *Server) credentialsOK(username, password string) bool {
+	s.mu.RLock()
+	adminUser := s.st.Settings.AdminUser
+	adminPassHash := s.st.Settings.AdminPassHash
+	s.mu.RUnlock()
+	a := sha256.Sum256([]byte(password))
+	b, _ := hex.DecodeString(adminPassHash)
+	userOK := subtle.ConstantTimeCompare([]byte(username), []byte(adminUser)) == 1
+	passOK := len(b) == len(a) && subtle.ConstantTimeCompare(a[:], b) == 1
+	return userOK && passOK
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		jsonErr(w, 405, "method not allowed")
@@ -319,18 +342,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "invalid json")
 		return
 	}
-	s.mu.RLock()
-	adminUser := s.st.Settings.AdminUser
-	adminPassHash := s.st.Settings.AdminPassHash
-	s.mu.RUnlock()
-	a := sha256.Sum256([]byte(x.Password))
-	b, _ := hex.DecodeString(adminPassHash)
-	userOK := subtle.ConstantTimeCompare([]byte(x.Username), []byte(adminUser)) == 1
-	passOK := len(b) == len(a) && subtle.ConstantTimeCompare(a[:], b) == 1
-	if !userOK || !passOK {
+	if !s.credentialsOK(x.Username, x.Password) {
 		jsonErr(w, 401, "invalid credentials")
 		return
 	}
+	s.mu.RLock()
+	adminUser := s.st.Settings.AdminUser
+	s.mu.RUnlock()
 	raw := make([]byte, 32)
 	_, _ = rand.Read(raw)
 	t := hex.EncodeToString(raw)
@@ -340,6 +358,128 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "buddyflix_session", Value: t, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 86400})
 	jsonOut(w, map[string]any{"ok": true, "user": adminUser})
 }
+func (s *Server) deviceLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	var x struct {
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		DeviceName string `json:"device_name"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil {
+		jsonErr(w, 400, "invalid json")
+		return
+	}
+	x.DeviceName = strings.TrimSpace(x.DeviceName)
+	if x.DeviceName == "" { x.DeviceName = "Fire TV" }
+	if len([]rune(x.DeviceName)) > 60 { jsonErr(w, 400, "device name too long"); return }
+	s.mu.RLock()
+	setupDone := s.st.Settings.SetupDone
+	s.mu.RUnlock()
+	if !setupDone { jsonErr(w, 409, "server setup incomplete"); return }
+	if !s.credentialsOK(strings.TrimSpace(x.Username), x.Password) {
+		jsonErr(w, 401, "invalid credentials")
+		return
+	}
+	raw := make([]byte, 32)
+	_, _ = rand.Read(raw)
+	token := hex.EncodeToString(raw)
+	hash := sha256.Sum256([]byte(token))
+	idRaw := make([]byte, 8)
+	_, _ = rand.Read(idRaw)
+	device := DeviceToken{
+		ID: hex.EncodeToString(idRaw),
+		Name: x.DeviceName,
+		TokenHash: hex.EncodeToString(hash[:]),
+		Created: time.Now().Format(time.RFC3339),
+	}
+	s.mu.Lock()
+	if len(s.st.DeviceTokens) >= 20 {
+		s.st.DeviceTokens = append([]DeviceToken(nil), s.st.DeviceTokens[len(s.st.DeviceTokens)-19:]...)
+	}
+	s.st.DeviceTokens = append(s.st.DeviceTokens, device)
+	err := s.saveLocked()
+	serverID := s.st.ServerID
+	serverName := s.st.Settings.ServerName
+	s.mu.Unlock()
+	if err != nil { jsonErr(w, 500, err.Error()); return }
+	jsonOut(w, map[string]any{
+		"ok": true,
+		"token": token,
+		"device_id": device.ID,
+		"server_id": serverID,
+		"server_name": serverName,
+	})
+}
+
+func bearerToken(r *http.Request) string {
+	h := strings.TrimSpace(r.Header.Get("Authorization"))
+	if len(h) < 8 || !strings.EqualFold(h[:7], "Bearer ") { return "" }
+	return strings.TrimSpace(h[7:])
+}
+
+func (s *Server) bearerAuthorized(r *http.Request) bool {
+	token := bearerToken(r)
+	if token == "" { return false }
+	hash := sha256.Sum256([]byte(token))
+	want := hex.EncodeToString(hash[:])
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, d := range s.st.DeviceTokens {
+		if subtle.ConstantTimeCompare([]byte(d.TokenHash), []byte(want)) == 1 { return true }
+	}
+	return false
+}
+
+func (s *Server) deviceLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" { jsonErr(w, 405, "method not allowed"); return }
+	token := bearerToken(r)
+	if token == "" { jsonErr(w, 400, "bearer token required"); return }
+	hash := sha256.Sum256([]byte(token))
+	want := hex.EncodeToString(hash[:])
+	s.mu.Lock()
+	next := s.st.DeviceTokens[:0]
+	for _, d := range s.st.DeviceTokens {
+		if subtle.ConstantTimeCompare([]byte(d.TokenHash), []byte(want)) == 1 { continue }
+		next = append(next, d)
+	}
+	s.st.DeviceTokens = next
+	err := s.saveLocked()
+	s.mu.Unlock()
+	if err != nil { jsonErr(w, 500, err.Error()); return }
+	jsonOut(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) devices(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		s.mu.RLock()
+		out := make([]map[string]string, 0, len(s.st.DeviceTokens))
+		for _, d := range s.st.DeviceTokens {
+			out = append(out, map[string]string{"id": d.ID, "name": d.Name, "created": d.Created})
+		}
+		s.mu.RUnlock()
+		jsonOut(w, out)
+	case "DELETE":
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if id == "" { jsonErr(w, 400, "id required"); return }
+		s.mu.Lock()
+		next := s.st.DeviceTokens[:0]
+		found := false
+		for _, d := range s.st.DeviceTokens {
+			if d.ID == id { found = true; continue }
+			next = append(next, d)
+		}
+		if !found { s.mu.Unlock(); jsonErr(w, 404, "device not found"); return }
+		s.st.DeviceTokens = next
+		err := s.saveLocked()
+		s.mu.Unlock()
+		if err != nil { jsonErr(w, 500, err.Error()); return }
+		jsonOut(w, map[string]bool{"ok": true})
+	default:
+		jsonErr(w, 405, "method not allowed")
+	}
+}
+
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("buddyflix_session"); e == nil {
 		s.mu.Lock()
@@ -351,6 +491,10 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) auth(n http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.bearerAuthorized(r) {
+			n(w, r)
+			return
+		}
 		c, e := r.Cookie("buddyflix_session")
 		if e != nil {
 			jsonErr(w, 401, "unauthorized")
@@ -446,7 +590,7 @@ func (s *Server) info(w http.ResponseWriter, r *http.Request) {
 		"version": Version,
 		"api_version": "1",
 		"product": "BuddyFlix Media Server",
-		"features": []string{"direct_play", "range_streaming", "progress", "libraries", "movies", "profiles"},
+		"features": []string{"direct_play", "range_streaming", "progress", "libraries", "movies", "series", "profiles", "device_tokens"},
 	})
 }
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -565,6 +709,7 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request) {
 	s.st.Settings.AdminPassHash = hex.EncodeToString(next[:])
 	e := s.saveLocked()
 	s.sessions = map[string]time.Time{}
+	s.st.DeviceTokens = nil
 	s.mu.Unlock()
 	if e != nil {
 		jsonErr(w, 500, e.Error())
@@ -578,6 +723,13 @@ func (s *Server) activeProfileID(r *http.Request) int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.st.Profiles) == 0 { return 0 }
+	if raw := strings.TrimSpace(r.Header.Get("X-BuddyFlix-Profile")); raw != "" {
+		if id, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			for _, p := range s.st.Profiles {
+				if p.ID == id { return id }
+			}
+		}
+	}
 	if c, err := r.Cookie("buddyflix_profile"); err == nil {
 		if id, err := strconv.ParseInt(c.Value, 10, 64); err == nil {
 			for _, p := range s.st.Profiles {
@@ -614,7 +766,8 @@ func (s *Server) profiles(w http.ResponseWriter, r *http.Request) {
 		items := append([]Profile(nil), s.st.Profiles...)
 		s.mu.RUnlock()
 		_, cookieErr := r.Cookie("buddyflix_profile")
-		jsonOut(w, map[string]any{"profiles": items, "active_id": active, "selected": cookieErr == nil})
+		selected := cookieErr == nil || strings.TrimSpace(r.Header.Get("X-BuddyFlix-Profile")) != ""
+		jsonOut(w, map[string]any{"profiles": items, "active_id": active, "selected": selected})
 	case "POST":
 		var x struct { Name, Avatar string }
 		if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&x) != nil { jsonErr(w, 400, "invalid json"); return }
