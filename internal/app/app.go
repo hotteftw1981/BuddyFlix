@@ -443,8 +443,9 @@ func (s *Server) system(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.Unlock()
 	s.mu.RLock()
 	serverName := s.st.Settings.ServerName
+	profileCount := len(s.st.Profiles)
 	s.mu.RUnlock()
-	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "profiles": len(s.st.Profiles), "scanning": sc, "tmdb": s.tmdbKey() != "", "tvdb": s.tvdbKey() != "", "storage": "embedded-json-v1"})
+	jsonOut(w, map[string]any{"version": Version, "server_name": serverName, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH, "cpus": runtime.NumCPU(), "goroutines": runtime.NumGoroutine(), "memory_mb": m.Alloc / 1024 / 1024, "uptime_sec": int(time.Since(s.started).Seconds()), "media": mc, "missing_media": missingCount, "libraries": lc, "profiles": profileCount, "scanning": sc, "tmdb": s.tmdbKey() != "", "tvdb": s.tvdbKey() != "", "storage": "embedded-json-v1"})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
