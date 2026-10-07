@@ -3,8 +3,21 @@ name: BuddyFlix CI
 on:
   push:
     branches: [main, develop]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'go.mod'
+      - 'go.sum'
   pull_request:
     branches: [main, develop]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'web/**'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,6 +29,7 @@ concurrency:
 jobs:
   test-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,13 +38,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
-          cache: false
+          cache: true
 
       - name: Define build versions
         id: version
         shell: bash
         run: |
-          if [ "$GITHUB_REF" = "refs/heads/develop" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
             echo "app_version=0.1.1-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
             echo "qpkg_version=0.1.1.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           else
@@ -82,7 +96,7 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="$LDFLAGS" -o buddyflix-armhf ./cmd/buddyflix
 
       - name: Install QDK 2.3.11
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -91,7 +105,7 @@ jobs:
           sudo bash ./InstallToUbuntu.sh install
 
       - name: Build QNAP ARMHF dev QPKG
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'workflow_dispatch'
         env:
           APP_VERSION: ${{ steps.version.outputs.app_version }}
           QPKG_VERSION: ${{ steps.version.outputs.qpkg_version }}
@@ -121,11 +135,11 @@ jobs:
           sha256sum "$OUT" > "$OUT.sha256"
 
       - name: Upload QNAP dev QPKG
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: BuddyFlix-${{ steps.version.outputs.app_version }}-QNAP-ARMHF
           path: |
             dist/*.qpkg
             dist/*.sha256
-          retention-days: 14
+          retention-days: 7
