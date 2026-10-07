@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"math"
 	"mime"
 	"net/http"
 	"os"
@@ -115,6 +116,7 @@ type SeriesView struct {
 	ContinueCount  int            `json:"continue_count"`
 	Poster         string         `json:"poster,omitempty"`
 	Backdrop       string         `json:"backdrop,omitempty"`
+	LastActivity   string         `json:"last_activity,omitempty"`
 	NextEpisode    *Media         `json:"next_episode,omitempty"`
 	Seasons        []SeriesSeason `json:"seasons"`
 }
@@ -1181,6 +1183,7 @@ func (s *Server) series(w http.ResponseWriter, r *http.Request) {
 		b.view.EpisodeCount++
 		if ep.Progress >= 95 { b.view.WatchedCount++ }
 		if ep.Progress > 1 && ep.Progress < 95 { b.view.ContinueCount++ }
+		if ep.ProgressUpdated != "" && ep.ProgressUpdated > b.view.LastActivity { b.view.LastActivity = ep.ProgressUpdated }
 		if b.view.Poster == "" && ep.Poster != "" { b.view.Poster = ep.Poster }
 		if b.view.Backdrop == "" && ep.Backdrop != "" { b.view.Backdrop = ep.Backdrop }
 		b.seasons[ep.Season] = append(b.seasons[ep.Season], ep)
@@ -1534,10 +1537,29 @@ func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "invalid json")
 		return
 	}
+	if math.IsNaN(x.Position) || math.IsInf(x.Position, 0) || math.IsNaN(x.Duration) || math.IsInf(x.Duration, 0) || x.Duration <= 0 {
+		jsonErr(w, 400, "invalid progress")
+		return
+	}
+	if x.Position < 0 { x.Position = 0 }
+	if x.Position > x.Duration { x.Position = x.Duration }
+	if x.Position/x.Duration >= 0.95 || (x.Position >= 60 && x.Duration-x.Position <= 30) {
+		x.Position = x.Duration
+	}
+
 	profileID := s.activeProfileID(r)
 	s.mu.Lock()
+	found := false
+	for _, m := range s.st.Media {
+		if m.ID == x.MediaID && !m.Missing { found = true; break }
+	}
+	if !found {
+		s.mu.Unlock()
+		jsonErr(w, 404, "media not found")
+		return
+	}
 	progressMap := s.profileProgressLocked(profileID)
-	progressMap[x.MediaID] = Progress{x.Position, x.Duration, time.Now().Format(time.RFC3339)}
+	progressMap[x.MediaID] = Progress{Position:x.Position, Duration:x.Duration, Updated:time.Now().Format(time.RFC3339)}
 	e := s.saveLocked()
 	s.mu.Unlock()
 	if e != nil {
