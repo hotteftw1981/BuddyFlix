@@ -16,6 +16,11 @@ android {
         versionName = "0.1.0-dev"
     }
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     buildFeatures {
         compose = true
     }
@@ -39,4 +44,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+
+kotlin {
+    jvmToolchain(17)
 }
