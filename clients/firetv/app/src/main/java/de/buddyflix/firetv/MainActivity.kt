@@ -7,7 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,7 +49,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -63,7 +61,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.zIndex
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -568,140 +565,102 @@ private fun HomeScreen(
         .sortedByDescending { it.progressUpdated }
     val recent = movies.sortedByDescending { it.added }.take(18)
     val favorites = movies.filter { it.favorite }
-    var hero by remember(data) { mutableStateOf(continueItems.firstOrNull() ?: recent.firstOrNull() ?: movies.firstOrNull()) }
+    val hero = continueItems.firstOrNull() ?: recent.firstOrNull() ?: movies.firstOrNull()
 
-    Box(Modifier.fillMaxSize()) {
-        hero?.let { item ->
-            val art = api.imageUrl(item.backdrop.ifBlank { item.poster })
-            if (art.isNotBlank()) {
-                AsyncImage(
-                    model = art,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+    Column(Modifier.fillMaxSize().background(Bg)) {
+        TopBar(serverName, profile, onProfiles, onDisconnect)
+
+        if (loading && data == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Deine Bibliothek wird geladen …", color = Muted, fontSize = 20.sp)
+            }
+            return@Column
+        }
+
+        if (!error.isNullOrBlank()) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(error, color = Error)
+                Spacer(Modifier.width(14.dp))
+                Button(onClick = onRetry) { Text("Nochmal") }
             }
         }
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    0f to Color(0xFA05070A),
-                    0.50f to Color(0xD805070A),
-                    0.82f to Color(0x5005070A),
-                    1f to Color(0xCC05070A)
-                )
-            )
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    0f to Color(0x3305070A),
-                    0.60f to Color(0x8805070A),
-                    1f to Bg
-                )
-            )
-        )
 
-        Column(Modifier.fillMaxSize()) {
-            TopBar(serverName, profile, onProfiles, onDisconnect)
-
-            if (loading && data == null) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Deine Bibliothek wird geladen …", color = Muted, fontSize = 20.sp)
-                }
-                return@Column
-            }
-
-            if (!error.isNullOrBlank()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(error, color = Color(0xFFFFA08D))
-                    Spacer(Modifier.width(14.dp))
-                    Button(onClick = onRetry) { Text("Nochmal") }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 54.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            hero?.let { item ->
+                item {
+                    Hero(api, item, onPlay, onDetail)
                 }
             }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 54.dp),
-                verticalArrangement = Arrangement.spacedBy(28.dp)
-            ) {
-                hero?.let { item ->
-                    item {
-                        Hero(api, item, onPlay, onDetail)
-                    }
+            if (continueItems.isNotEmpty()) {
+                item {
+                    MediaRow(
+                        api = api,
+                        title = "Weiterschauen",
+                        kicker = "DEIN FORTSCHRITT",
+                        items = continueItems.take(16),
+                        wide = true,
+                        onClick = onDetail
+                    )
                 }
-                if (continueItems.isNotEmpty()) {
-                    item {
-                        MediaRow(
-                            api = api,
-                            title = "Weiterschauen",
-                            kicker = "DEIN FORTSCHRITT",
-                            items = continueItems.take(16),
-                            wide = true,
-                            onFocus = { hero = it },
-                            onClick = onDetail
-                        )
-                    }
+            }
+            if (recent.isNotEmpty()) {
+                item {
+                    MediaRow(
+                        api = api,
+                        title = "Neu bei BuddyFlix",
+                        kicker = "ZULETZT HINZUGEFÜGT",
+                        items = recent,
+                        onClick = onDetail
+                    )
                 }
-                if (recent.isNotEmpty()) {
-                    item {
-                        MediaRow(
-                            api = api,
-                            title = "Neu bei BuddyFlix",
-                            kicker = "ZULETZT HINZUGEFÜGT",
-                            items = recent,
-                            onFocus = { hero = it },
-                            onClick = onDetail
-                        )
-                    }
+            }
+            if (movies.isNotEmpty()) {
+                item {
+                    MediaRow(
+                        api = api,
+                        title = "Filme",
+                        kicker = movies.size.toString() + " TITEL",
+                        items = movies.take(40),
+                        onClick = onDetail
+                    )
                 }
-                if (movies.isNotEmpty()) {
-                    item {
-                        MediaRow(
-                            api = api,
-                            title = "Filme",
-                            kicker = movies.size.toString() + " TITEL",
-                            items = movies.take(40),
-                            onFocus = { hero = it },
-                            onClick = onDetail
-                        )
-                    }
+            }
+            if (!data?.series.isNullOrEmpty()) {
+                item {
+                    SeriesRow(
+                        api = api,
+                        title = "Serien",
+                        items = data!!.series,
+                        onClick = onSeries
+                    )
                 }
-                if (!data?.series.isNullOrEmpty()) {
-                    item {
-                        SeriesRow(
-                            api = api,
-                            title = "Serien",
-                            items = data!!.series,
-                            onFocus = { it.nextEpisode?.let { ep -> hero = ep.copy(title = it.title, seriesTitle = it.title) } },
-                            onClick = onSeries
-                        )
-                    }
+            }
+            if (favorites.isNotEmpty()) {
+                item {
+                    MediaRow(
+                        api = api,
+                        title = "Meine Liste",
+                        kicker = "FAVORITEN",
+                        items = favorites,
+                        onClick = onDetail
+                    )
                 }
-                if (favorites.isNotEmpty()) {
-                    item {
-                        MediaRow(
-                            api = api,
-                            title = "Meine Liste",
-                            kicker = "FAVORITEN",
-                            items = favorites,
-                            onFocus = { hero = it },
-                            onClick = onDetail
-                        )
-                    }
-                }
-                if (movies.isEmpty() && data?.series.isNullOrEmpty()) {
-                    item {
-                        Text(
-                            "Noch keine Medien gefunden.",
-                            modifier = Modifier.padding(horizontal = 48.dp),
-                            color = Muted,
-                            fontSize = 18.sp
-                        )
-                    }
+            }
+            if (movies.isEmpty() && data?.series.isNullOrEmpty()) {
+                item {
+                    Text(
+                        "Noch keine Medien gefunden.",
+                        modifier = Modifier.padding(horizontal = 48.dp),
+                        color = Muted,
+                        fontSize = 18.sp
+                    )
                 }
             }
         }
@@ -739,25 +698,79 @@ private fun Hero(
     onPlay: (MediaEntry) -> Unit,
     onDetail: (MediaEntry) -> Unit
 ) {
-    Column(
-        Modifier.fillMaxWidth().height(300.dp).padding(horizontal = 48.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.Bottom
+    val art = api.imageUrl(media.backdrop.ifBlank { media.poster })
+    Box(
+        Modifier.fillMaxWidth().height(330.dp).background(Color(0xFF0B0F15))
     ) {
-        Text(if (media.kind == "episode") "WEITERSCHAUEN" else "BUDDYFLIX SPOTLIGHT", color = AccentSoft, fontSize = 10.sp, letterSpacing = 3.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(media.title, color = Color.White, fontSize = 48.sp, lineHeight = 50.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(8.dp))
-        Text(media.subtitle, color = Color.White.copy(alpha = .72f), fontSize = 14.sp)
-        if (media.overview.isNotBlank()) {
-            Spacer(Modifier.height(10.dp))
-            Text(media.overview, color = Color.White.copy(alpha = .78f), fontSize = 14.sp, lineHeight = 20.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(650.dp))
+        if (art.isNotBlank()) {
+            AsyncImage(
+                model = art,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         }
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { onPlay(media) }) {
-                Text(if (media.progress > 1.0 && media.progress < 95.0) "▶  Fortsetzen" else "▶  Abspielen")
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to Color(0xFC07090D),
+                    0.42f to Color(0xE607090D),
+                    0.72f to Color(0x6207090D),
+                    1f to Color(0xD007090D)
+                )
+            )
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color(0x1207090D),
+                    0.68f to Color(0x5507090D),
+                    1f to Bg
+                )
+            )
+        )
+        Column(
+            Modifier.align(Alignment.BottomStart).width(700.dp)
+                .padding(start = 48.dp, end = 24.dp, bottom = 34.dp),
+            verticalArrangement = Arrangement.Bottom
+        ) {
+            Text(
+                if (media.kind == "episode") "WEITERSCHAUEN" else "BUDDYFLIX SPOTLIGHT",
+                color = AccentSoft,
+                fontSize = 9.sp,
+                letterSpacing = 2.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(7.dp))
+            Text(
+                media.title,
+                color = Color.White,
+                fontSize = 44.sp,
+                lineHeight = 46.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(7.dp))
+            Text(media.subtitle, color = Color.White.copy(alpha = .70f), fontSize = 13.sp)
+            if (media.overview.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    media.overview,
+                    color = Color.White.copy(alpha = .76f),
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Button(onClick = { onDetail(media) }) { Text("Details") }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { onPlay(media) }) {
+                    Text(if (media.progress > 1.0 && media.progress < 95.0) "▶  Fortsetzen" else "▶  Abspielen")
+                }
+                Button(onClick = { onDetail(media) }) { Text("Details") }
+            }
         }
     }
 }
@@ -769,26 +782,21 @@ private fun MediaRow(
     kicker: String,
     items: List<MediaEntry>,
     wide: Boolean = false,
-    onFocus: (MediaEntry) -> Unit,
     onClick: (MediaEntry) -> Unit
 ) {
     Column {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 48.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Column {
-                Text(kicker, color = AccentSoft, fontSize = 9.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                Text(title, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-            }
+        Column(Modifier.padding(horizontal = 48.dp)) {
+            Text(kicker, color = Muted, fontSize = 8.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(2.dp))
+            Text(title, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(12.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(items, key = { title + "-" + it.id }) { media ->
-                MediaCard(api, media, wide, onFocus, onClick)
+                MediaCard(api, media, wide, onClick)
             }
         }
     }
@@ -799,31 +807,26 @@ private fun MediaCard(
     api: BuddyApi,
     media: MediaEntry,
     wide: Boolean,
-    onFocus: (MediaEntry) -> Unit,
     onClick: (MediaEntry) -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.075f else 1f, label = "cardScale")
     val border by animateColorAsState(if (focused) Color.White else Line, label = "cardBorder")
-    val width = if (wide) 278.dp else 168.dp
-    val height = if (wide) 158.dp else 252.dp
+    val width = if (wide) 280.dp else 170.dp
+    val artHeight = if (wide) 158.dp else 255.dp
+    val totalHeight = if (wide) 212.dp else 310.dp
     val art = api.imageUrl(if (wide) media.backdrop.ifBlank { media.poster } else media.poster.ifBlank { media.backdrop })
 
     Column(
-        modifier = Modifier.width(width).zIndex(if (focused) 2f else 0f)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocus(media)
-            }
+        modifier = Modifier.width(width).height(totalHeight)
+            .onFocusChanged { focused = it.isFocused }
             .focusable()
             .clickable { onClick(media) }
     ) {
         Box(
-            Modifier.fillMaxWidth().height(height)
-                .clip(RoundedCornerShape(18.dp))
-                .background(Panel)
-                .border(if (focused) 3.dp else 1.dp, border, RoundedCornerShape(18.dp))
+            Modifier.fillMaxWidth().height(artHeight)
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (focused) PanelFocused else Panel)
+                .border(if (focused) 3.dp else 1.dp, border, RoundedCornerShape(16.dp))
         ) {
             if (art.isNotBlank()) {
                 AsyncImage(
@@ -832,32 +835,43 @@ private fun MediaCard(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-            }
-            if (art.isBlank()) {
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF202938), Panel))))
+            } else {
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(listOf(Color(0xFF1B2430), Panel))
+                    )
+                )
             }
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Transparent, Color(0xDD05070A))
+                        listOf(Color.Transparent, Color.Transparent, Color(0xB807090D))
                     )
                 )
             )
             if (media.progress > 1.0 && media.progress < 95.0) {
                 Box(
-                    Modifier.fillMaxWidth().height(5.dp).align(Alignment.BottomCenter)
-                        .background(Color(0x552A303A))
+                    Modifier.fillMaxWidth().height(4.dp).align(Alignment.BottomCenter)
+                        .background(Color(0x55323B47))
                 ) {
                     Box(
                         Modifier.fillMaxWidth((media.progress / 100.0).toFloat().coerceIn(0f, 1f))
-                            .fillMaxHeight().background(Brush.horizontalGradient(listOf(Accent, AccentSoft)))
+                            .fillMaxHeight().background(Accent)
                     )
                 }
             }
         }
         Spacer(Modifier.height(9.dp))
-        Text(media.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(media.subtitle, color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            media.title,
+            color = if (focused) Color.White else Color(0xFFE2E6EB),
+            fontSize = 13.sp,
+            fontWeight = if (focused) FontWeight.Bold else FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(media.subtitle, color = Muted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -866,47 +880,83 @@ private fun SeriesRow(
     api: BuddyApi,
     title: String,
     items: List<SeriesEntry>,
-    onFocus: (SeriesEntry) -> Unit,
     onClick: (SeriesEntry) -> Unit
 ) {
     Column {
-        Text(title, modifier = Modifier.padding(horizontal = 48.dp), color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Column(Modifier.padding(horizontal = 48.dp)) {
+            Text("DEINE SERIEN", color = Muted, fontSize = 8.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(2.dp))
+            Text(title, color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(12.dp))
         LazyRow(
             contentPadding = PaddingValues(horizontal = 48.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             items(items, key = { it.key }) { series ->
                 var focused by remember { mutableStateOf(false) }
-                val scale by animateFloatAsState(if (focused) 1.075f else 1f, label = "seriesScale")
+                val border by animateColorAsState(if (focused) Color.White else Line, label = "seriesBorder")
                 val art = api.imageUrl(series.poster.ifBlank { series.backdrop })
+
                 Column(
-                    Modifier.width(168.dp).zIndex(if (focused) 2f else 0f)
-                        .graphicsLayer { scaleX = scale; scaleY = scale }
-                        .onFocusChanged { focused = it.isFocused; if (it.isFocused) onFocus(series) }
-                        .focusable().clickable { onClick(series) }
+                    Modifier.width(170.dp).height(310.dp)
+                        .onFocusChanged { focused = it.isFocused }
+                        .focusable()
+                        .clickable { onClick(series) }
                 ) {
                     Box(
-                        Modifier.fillMaxWidth().height(252.dp).clip(RoundedCornerShape(18.dp))
-                            .background(Panel)
-                            .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else Line, RoundedCornerShape(18.dp))
+                        Modifier.fillMaxWidth().height(255.dp).clip(RoundedCornerShape(16.dp))
+                            .background(if (focused) PanelFocused else Panel)
+                            .border(if (focused) 3.dp else 1.dp, border, RoundedCornerShape(16.dp))
                     ) {
                         if (art.isNotBlank()) {
-                            AsyncImage(model = art, contentDescription = series.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            AsyncImage(
+                                model = art,
+                                contentDescription = series.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                Modifier.fillMaxSize().background(
+                                    Brush.verticalGradient(listOf(Color(0xFF1B2430), Panel))
+                                )
+                            )
                         }
-                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color(0xDD05070A)))))
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Transparent, Color.Transparent, Color(0xB807090D))
+                                )
+                            )
+                        )
                         Text(
                             series.watchedCount.toString() + "/" + series.episodeCount,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)
-                                .background(Color(0xCC05070A), RoundedCornerShape(99.dp)).padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(9.dp)
+                                .background(Color(0xC007090D), RoundedCornerShape(99.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             color = Color.White,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                     Spacer(Modifier.height(9.dp))
-                    Text(series.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(series.seasonCount.toString() + " Staffeln · " + series.episodeCount + " Folgen", color = Muted, fontSize = 10.sp)
+                    Text(
+                        series.title,
+                        color = if (focused) Color.White else Color(0xFFE2E6EB),
+                        fontSize = 13.sp,
+                        fontWeight = if (focused) FontWeight.Bold else FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        series.seasonCount.toString() + " Staffeln · " + series.episodeCount + " Folgen",
+                        color = Muted,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -1050,7 +1100,7 @@ private fun SeriesDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(season?.episodes.orEmpty(), key = { it.id }) { episode ->
-                        MediaCard(api, episode, wide = true, onFocus = {}, onClick = { onPlay(it) })
+                        MediaCard(api, episode, wide = true, onClick = { onPlay(it) })
                     }
                 }
             }
@@ -1081,13 +1131,13 @@ private fun TvFocusBox(
     content: @Composable ColumnScope.() -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.035f else 1f, label = "focusBox")
     Column(
-        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+        modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .background(if (focused) PanelFocused else Panel, RoundedCornerShape(18.dp))
             .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else Line, RoundedCornerShape(18.dp))
-            .focusable().clickable(onClick = onClick),
+            .focusable()
+            .clickable(onClick = onClick),
         content = content
     )
 }
