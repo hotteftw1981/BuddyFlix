@@ -733,3 +733,131 @@ body.cinema-focus .hero-nav-right{right:170px}
 .continue-percent{position:absolute;top:14px;right:14px;z-index:3;padding:5px 8px;border-radius:999px;background:rgba(5,7,11,.72);backdrop-filter:blur(10px);font-size:11px;color:#fff}
 @media (max-width:900px){.continue-rail{grid-auto-columns:minmax(280px,76vw)}}
 @media (max-width:560px){.continue-rail{grid-auto-columns:86vw}.continue-card{min-height:172px}.continue-copy{left:16px;bottom:20px}.continue-copy h3{font-size:18px}.continue-play{right:14px;bottom:27px;width:42px;height:42px}}
+
+
+/* BuddyFlix series polish */
+.series-library{padding:0 0 80px;background:
+  radial-gradient(circle at 78% 8%,rgba(255,91,53,.09),transparent 34rem),
+  linear-gradient(180deg,#07090d 0%,#06070a 100%)}
+.series-library-hero{position:relative;min-height:clamp(430px,58vh,650px);display:flex;align-items:flex-end;padding:clamp(90px,14vh,150px) clamp(24px,6vw,86px) 54px;overflow:hidden;isolation:isolate}
+.series-library-hero-bg{position:absolute;z-index:-3;inset:0;background:linear-gradient(135deg,#252c38,#11151c);background-size:cover;background-position:center 28%;transform:scale(1.02);filter:saturate(1.05)}
+.series-library-hero-fade{position:absolute;z-index:-2;inset:0;background:
+  linear-gradient(90deg,rgba(5,7,11,.97) 0%,rgba(5,7,11,.82) 38%,rgba(5,7,11,.24) 75%,rgba(5,7,11,.48) 100%),
+  linear-gradient(0deg,#06070a 0%,rgba(6,7,10,.48) 38%,rgba(6,7,10,.08) 78%)}
+.series-library-hero-copy{width:min(760px,70vw);position:relative;z-index:2}
+.series-library-hero-copy h1{font-size:clamp(54px,7vw,104px);line-height:.87;letter-spacing:-.065em;margin:8px 0 18px;text-wrap:balance}
+.series-library-hero-copy>p{margin:0 0 20px;color:#a4adba;font-size:13px}
+.series-hero-progress{width:min(520px,100%);margin:0 0 24px}
+.series-hero-progress>span{display:flex;justify-content:space-between;gap:10px;margin-bottom:7px;color:#909aa8;font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+.series-hero-progress>span b{color:#fff}
+.series-hero-progress>i{display:block;height:5px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+.series-hero-progress>i em{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ff4e5f,#ff8f5d);box-shadow:0 0 20px rgba(255,83,79,.35)}
+.series-hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+.series-library-stats{position:absolute;right:clamp(24px,5vw,72px);bottom:52px;z-index:2;display:flex;gap:8px;padding:8px;border:1px solid rgba(255,255,255,.08);border-radius:22px;background:rgba(8,10,14,.58);backdrop-filter:blur(18px)}
+.series-library-stats span{min-width:100px;padding:13px 16px;text-align:center;border-right:1px solid rgba(255,255,255,.07)}
+.series-library-stats span:last-child{border-right:0}
+.series-library-stats b{display:block;font-size:24px;letter-spacing:-.04em;color:#fff}
+.series-library-stats small{display:block;margin-top:3px;color:#7f8998;font-size:9px;text-transform:uppercase;letter-spacing:.09em}
+.series-library-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;padding:42px clamp(24px,6vw,86px) 24px}
+.series-library-toolbar h2{font-size:36px;letter-spacing:-.04em;margin:4px 0 6px}
+.series-library-toolbar p{margin:0;color:#7f8998;font-size:12px}
+.series-filterbar{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.series-filterbar button{display:flex;align-items:center;gap:7px;border:1px solid #2b323c;background:#0d1117;color:#8993a1;border-radius:999px;padding:9px 12px;cursor:pointer;font-size:10px;font-weight:800;transition:.16s}
+.series-filterbar button span{min-width:20px;height:20px;display:grid;place-items:center;border-radius:999px;background:#171d25;color:#6f7a8a;font-size:9px}
+.series-filterbar button:hover{color:#fff;border-color:#46515f}
+.series-filterbar button.active{background:#fff;color:#11141a;border-color:#fff}
+.series-filterbar button.active span{background:#171a20;color:#fff}
+.series-library .series-grid{padding:0 clamp(24px,6vw,86px);grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px}
+.series-library .series-card{min-height:245px;border-radius:22px}
+.series-card-top{position:absolute;z-index:3;left:16px;right:16px;top:15px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.series-card-top>b{padding:5px 8px;border-radius:999px;background:rgba(7,9,12,.72);backdrop-filter:blur(10px);color:#d6dbe2;font-size:10px;font-weight:800}
+.series-state{display:inline-flex;align-items:center;min-height:26px;padding:0 9px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(7,9,12,.68);backdrop-filter:blur(10px);font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#cbd1d9}
+.series-state.continue{color:#ffd1b9;border-color:rgba(255,136,83,.3);background:rgba(90,39,17,.55)}
+.series-state.active{color:#ffe59e;border-color:rgba(255,208,87,.25);background:rgba(74,57,13,.5)}
+.series-state.new{color:#b6c7dc;border-color:rgba(146,174,210,.22)}
+.series-state.complete{color:#b9f6d5;border-color:rgba(96,211,153,.24);background:rgba(19,70,47,.46)}
+.series-card-play{position:absolute;z-index:4;right:16px;bottom:20px;width:46px;height:46px;border:0;border-radius:50%;background:#fff;color:#0b0e12;font-size:17px;cursor:pointer;box-shadow:0 10px 28px rgba(0,0,0,.34);transition:transform .16s ease}
+.series-card-play:hover{transform:scale(1.08)}
+.series-library .series-card-copy{right:76px}
+.series-total-progress{position:absolute;z-index:4;left:0;right:0;bottom:0;height:5px;background:rgba(255,255,255,.09)}
+.series-total-progress i{display:block;height:100%;background:linear-gradient(90deg,#ff4f62,#ff9660)}
+.series-complete .series-total-progress i{background:linear-gradient(90deg,#63c995,#8be8b9)}
+.series-detail{padding-top:clamp(105px,13vh,165px)}
+.series-detail-bg{height:72vh}
+.series-detail-head{max-width:930px;margin-bottom:54px}
+.series-detail-kicker{display:flex;align-items:center;gap:10px;color:#8b95a4;font-size:10px;text-transform:uppercase;letter-spacing:.1em}
+.series-detail-overall{width:min(560px,100%);margin:22px 0 22px}
+.series-detail-overall>div{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;color:#8b95a4;font-size:10px;text-transform:uppercase;letter-spacing:.1em}
+.series-detail-overall>div b{font-size:14px;color:#fff}
+.series-detail-overall>i{display:block;height:5px;border-radius:99px;overflow:hidden;background:rgba(255,255,255,.1)}
+.series-detail-overall>i em{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ff4e5f,#ff8f5d)}
+.series-season-panel{position:relative;z-index:2;margin-top:20px;padding:26px;border:1px solid #232a34;border-radius:26px;background:rgba(8,10,14,.86);backdrop-filter:blur(18px);box-shadow:0 24px 80px rgba(0,0,0,.25)}
+.series-season-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:12px}
+.series-season-heading h2{font-size:32px;letter-spacing:-.04em;margin:4px 0 0}
+.series-season-heading .series-season-tabs{margin:0;justify-content:flex-end}
+.series-season-tabs button{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:9px 12px}
+.series-season-tabs button span{display:inline-grid;place-items:center;min-width:25px;height:20px;padding:0 5px;border-radius:999px;background:#171d24;color:#6f7988;font-size:9px}
+.series-season-tabs button.active span{background:#562c19;color:#ffc29f}
+.series-season-summary{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:14px 0 10px;padding:0 4px;color:#7f8998;font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+.series-season-summary b{color:#dfe4ea}
+.series-episodes{max-width:none;gap:10px}
+.episode-row{grid-template-columns:150px 86px minmax(0,1fr) auto;min-height:104px;padding:0 14px 0 0;border-radius:18px;background:rgba(13,16,21,.9)}
+.episode-row.watched{opacity:.84}
+.episode-row.watched:hover{opacity:1}
+.episode-row.in-progress{border-color:rgba(255,111,60,.34);background:rgba(21,17,15,.92)}
+.episode-art{position:relative;align-self:stretch;min-height:102px;border-right:1px solid #242b35;background:
+  radial-gradient(circle at 30% 20%,rgba(255,255,255,.08),transparent 35%),
+  linear-gradient(135deg,#242b35,#12161d);background-size:cover;background-position:center;border-radius:17px 0 0 17px;overflow:hidden}
+.episode-art:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,8,11,.12),rgba(6,8,11,.56))}
+.episode-art .episode-play{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;background:rgba(11,14,19,.76);backdrop-filter:blur(10px)}
+.episode-art .episode-play:hover{transform:translate(-50%,-50%) scale(1.08);background:#fff;color:#0c0f14}
+.episode-number{display:grid;gap:5px;padding-left:4px}
+.episode-number b{font-size:13px;letter-spacing:.08em;color:#f4f6f8}
+.episode-number span{font-size:9px;color:#737e8d;text-transform:uppercase;letter-spacing:.09em}
+.episode-copy{gap:8px}
+.episode-copy strong{font-size:16px}
+.episode-meta{display:flex;gap:8px;flex-wrap:wrap}
+.episode-meta span{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border-radius:999px;background:#151b23;color:#7f8998;font-size:9px;text-transform:uppercase;letter-spacing:.07em}
+.episode-meta span.active{color:#ffb489;background:#3a2115}
+.episode-meta span.done{color:#aee8c9;background:#143124}
+.episode-actions{display:flex;gap:7px;align-items:center}
+.episode-info,.episode-watch{width:38px;height:38px;border-radius:12px;border:1px solid #343c48;background:#171c23;color:#fff;cursor:pointer}
+.episode-info:hover,.episode-watch:hover{background:#262d37;border-color:#4a5564}
+.episode-watch{font-weight:900}
+.episode-progress{height:4px}
+.episode-progress i{background:linear-gradient(90deg,#ff4d5f,#ff9860)}
+@media(max-width:1100px){
+  .series-library-stats{display:none}
+  .series-library-hero-copy{width:min(760px,84vw)}
+  .series-season-heading{align-items:flex-start;flex-direction:column}
+  .series-season-heading .series-season-tabs{justify-content:flex-start}
+}
+@media(max-width:760px){
+  .series-library-hero{min-height:500px;padding:120px 20px 38px}
+  .series-library-hero-copy{width:100%}
+  .series-library-hero-copy h1{font-size:54px}
+  .series-library-toolbar{align-items:flex-start;flex-direction:column;padding:32px 20px 18px}
+  .series-filterbar{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;width:100%;padding-bottom:4px}
+  .series-filterbar button{white-space:nowrap}
+  .series-library .series-grid{padding:0 20px;grid-template-columns:1fr}
+  .series-season-panel{padding:18px 14px;border-radius:20px}
+  .series-season-tabs{overflow-x:auto;flex-wrap:nowrap;width:100%;padding-bottom:4px}
+  .series-season-tabs button{white-space:nowrap}
+  .episode-row{grid-template-columns:110px minmax(0,1fr) auto;min-height:90px}
+  .episode-art{min-height:88px}
+  .episode-number{display:none}
+  .episode-copy strong{font-size:14px}
+  .episode-watch{display:none}
+}
+@media(max-width:520px){
+  .series-library-hero{min-height:450px}
+  .series-library-hero-copy h1{font-size:44px}
+  .series-hero-actions .btn{width:100%}
+  .series-library .series-card{min-height:220px}
+  .series-detail{padding:110px 14px 40px}
+  .series-detail-head h1{font-size:44px}
+  .series-season-panel{padding:14px 10px}
+  .episode-row{grid-template-columns:92px minmax(0,1fr);padding-right:10px}
+  .episode-actions{display:none}
+  .episode-meta span:nth-child(n+2){display:none}
+}
