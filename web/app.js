@@ -1,4 +1,4 @@
-const $=s=>document.querySelector(s);let state={media:[],series:[],libs:[],system:null,user:null,profiles:[],activeProfile:null,profileSelected:false};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',movieView='posters',heroIndex=0,currentView='home';
+const $=s=>document.querySelector(s);let state={media:[],series:[],libs:[],system:null,user:null,profiles:[],activeProfile:null,profileSelected:false};let metadataPollTimer=null,heroTimer=null;let movieFilter='all',movieSort='recent',movieDecade='all',movieView='posters',seriesFilter='all',heroIndex=0,currentView='home';
 async function api(path,opt={}){const r=await fetch(path,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});if(r.status===401){loginView();throw new Error('unauthorized')}const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Fehler');return j}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function toast(t){let x=document.createElement('div');x.className='toast';x.textContent=t;document.body.append(x);setTimeout(()=>x.remove(),2500)}
@@ -240,29 +240,129 @@ function renderMovies(){
 }
 
 function seriesArtwork(show){let ep=show.next_episode||(show.seasons?.[0]?.episodes?.[0]);return show.backdrop||show.poster||ep?.backdrop||ep?.poster||''}
+function seriesEpisodes(show){return (show.seasons||[]).flatMap(x=>x.episodes||[]).slice().sort((a,b)=>(a.season-b.season)||(a.episode-b.episode))}
+function seriesProgress(show){return show.episode_count?Math.max(0,Math.min(100,(Number(show.watched_count)||0)/show.episode_count*100)):0}
+function seriesState(show){
+  let pct=seriesProgress(show);
+  if(show.episode_count&&show.watched_count>=show.episode_count)return {id:'complete',label:'Abgeschlossen',pct};
+  if(show.continue_count>0)return {id:'continue',label:'Weiterschauen',pct};
+  if(show.watched_count>0)return {id:'active',label:'In deiner Serie',pct};
+  return {id:'new',label:'Noch ungesehen',pct};
+}
+function setSeriesFilter(filter){seriesFilter=filter;renderSeries()}
+function filteredSeries(){
+  let items=state.series.slice();
+  if(seriesFilter==='continue')items=items.filter(x=>x.continue_count>0);
+  if(seriesFilter==='active')items=items.filter(x=>x.watched_count>0&&x.watched_count<x.episode_count);
+  if(seriesFilter==='new')items=items.filter(x=>x.watched_count===0&&x.continue_count===0);
+  if(seriesFilter==='complete')items=items.filter(x=>x.episode_count>0&&x.watched_count>=x.episode_count);
+  items.sort((a,b)=>String(b.last_activity||'').localeCompare(String(a.last_activity||''))||String(a.title||'').localeCompare(String(b.title||''),'de'));
+  return items
+}
 function seriesHomeSection(items){
   if(!items.length)return '';
   return `<section class="home-section theater-shelf series-shelf"><div class="rowhead"><div><div class="shelf-kicker">BEREIT FÜR DICH</div><h2>Nächste Serienfolge</h2></div><span class="rail-count">${items.length}</span></div><div class="series-rail">${items.map(seriesCard).join('')}</div></section>`
 }
-function seriesCard(show){
+function seriesCard(show,index=0){
   let art=seriesArtwork(show),next=show.next_episode,pct=next?mediaProgress(next):0,resume=pct>1&&pct<95;
-  let nextText=next?((resume?'Fortsetzen: ':'Als Nächstes: ')+'S'+String(next.season||0).padStart(2,'0')+'E'+String(next.episode||0).padStart(2,'0')+' · '+esc(next.title)):'';
-  return `<article class="series-card" onclick="openSeries('${encodeURIComponent(show.key)}')"><div class="series-card-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-card-shade"></div><div class="series-card-copy"><span>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen</span><h3>${esc(show.title)}</h3>${next?'<small>'+nextText+'</small>':''}</div>${resume?"<div class=\"series-card-progress\"><i style=\"width:"+pct+"%\"></i></div>":''}</article>`
+  let totalPct=seriesProgress(show),status=seriesState(show),first=seriesEpisodes(show)[0],playTarget=next||first;
+  let nextText=next?((resume?'Fortsetzen: ':'Als Nächstes: ')+'S'+String(next.season||0).padStart(2,'0')+'E'+String(next.episode||0).padStart(2,'0')+' · '+esc(next.title)):(status.id==='complete'?'Alle Folgen gesehen':'Bereit zum Start');
+  return `<article class="series-card ${status.id==='complete'?'series-complete':''}" onclick="openSeries('${encodeURIComponent(show.key)}')">
+    <div class="series-card-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div>
+    <div class="series-card-shade"></div>
+    <div class="series-card-top"><span class="series-state ${status.id}">${status.label}</span><b>${show.watched_count}/${show.episode_count}</b></div>
+    <div class="series-card-copy"><span>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen</span><h3>${esc(show.title)}</h3><small>${nextText}</small></div>
+    ${playTarget?`<button class="series-card-play" onclick="event.stopPropagation();play(${playTarget.id},'${resume?'resume':'start'}')" aria-label="${resume?'Fortsetzen':'Abspielen'}">▶</button>`:''}
+    <div class="series-total-progress"><i style="width:${totalPct}%"></i></div>
+  </article>`
 }
 function renderSeries(query=''){
   currentView='series';stopHeroRotation();
-  let q=String(query||'').trim().toLowerCase(),items=state.series.filter(x=>!q||x.title.toLowerCase().includes(q));
-  let episodes=items.reduce((n,x)=>n+x.episode_count,0),seasons=items.reduce((n,x)=>n+x.season_count,0);
-  $('#content').innerHTML=`<section class="series-page"><div class="series-page-head"><div><div class="section-kicker">BUDDYFLIX SERIEN</div><h1>Serien.</h1><p>${items.length} Serien · ${seasons} Staffeln · ${episodes} Folgen</p></div></div>${items.length?"<div class=\"series-grid\">"+items.map(seriesCard).join('')+"</div>":"<div class=\"series-empty\"><span>▤</span><h2>Noch keine Serien gefunden.</h2><p>Lege in der Verwaltung eine Bibliothek vom Typ „Serien“ an. BuddyFlix erkennt S01E01- und 1x01-Dateinamen automatisch.</p></div>"}</section>`
+  let q=String(query||'').trim().toLowerCase(),all=state.series.filter(x=>!q||x.title.toLowerCase().includes(q));
+  let base=filteredSeries().filter(x=>!q||x.title.toLowerCase().includes(q));
+  let episodes=all.reduce((n,x)=>n+x.episode_count,0),seasons=all.reduce((n,x)=>n+x.season_count,0),watched=all.reduce((n,x)=>n+x.watched_count,0);
+  let activeCount=all.filter(x=>x.watched_count>0&&x.watched_count<x.episode_count).length;
+  let spotlight=all.find(x=>x.continue_count>0)||all.find(x=>x.watched_count>0&&x.watched_count<x.episode_count)||all[0]||null;
+  let spotNext=spotlight?.next_episode||seriesEpisodes(spotlight||{})[0]||null,spotPct=spotlight?seriesProgress(spotlight):0,spotArt=spotlight?seriesArtwork(spotlight):'';
+  let filters=[['all','Alle'],['continue','Weiterschauen'],['active','Aktiv'],['new','Ungesehen'],['complete','Fertig']];
+  $('#content').innerHTML=`<section class="series-page series-library">
+    ${spotlight?`<div class="series-library-hero">
+      <div class="series-library-hero-bg" ${spotArt?"style=\"background-image:url('"+esc(spotArt)+"')\"":''}></div>
+      <div class="series-library-hero-fade"></div>
+      <div class="series-library-hero-copy">
+        <div class="section-kicker">DEINE SERIENWELT</div>
+        <h1>${esc(spotlight.title)}</h1>
+        <p>${spotlight.watched_count} von ${spotlight.episode_count} Folgen gesehen · ${spotlight.season_count} Staffel${spotlight.season_count===1?'':'n'}</p>
+        <div class="series-hero-progress"><span><b>${Math.round(spotPct)}%</b> deiner Serie</span><i><em style="width:${spotPct}%"></em></i></div>
+        <div class="series-hero-actions">
+          ${spotNext?`<button class="btn primary" onclick="play(${spotNext.id},'${mediaProgress(spotNext)>1&&mediaProgress(spotNext)<95?'resume':'start'}')">▶ ${mediaProgress(spotNext)>1&&mediaProgress(spotNext)<95?'Weitersehen':'Nächste Folge'}</button>`:''}
+          <button class="btn ghost" onclick="openSeries('${encodeURIComponent(spotlight.key)}')">Staffeln & Folgen</button>
+        </div>
+      </div>
+      <div class="series-library-stats"><span><b>${all.length}</b><small>Serien</small></span><span><b>${activeCount}</b><small>aktiv</small></span><span><b>${watched}</b><small>Folgen gesehen</small></span></div>
+    </div>`:`<div class="series-page-head"><div><div class="section-kicker">BUDDYFLIX SERIEN</div><h1>Serien.</h1><p>Noch keine Serien in deiner Bibliothek.</p></div></div>`}
+    <div class="series-library-toolbar">
+      <div><div class="section-kicker">BIBLIOTHEK</div><h2>Alle Serien</h2><p>${all.length} Serien · ${seasons} Staffeln · ${episodes} Folgen</p></div>
+      <div class="series-filterbar">${filters.map(([id,label])=>`<button class="${seriesFilter===id?'active':''}" onclick="setSeriesFilter('${id}')">${label}<span>${id==='all'?all.length:id==='continue'?all.filter(x=>x.continue_count>0).length:id==='active'?all.filter(x=>x.watched_count>0&&x.watched_count<x.episode_count).length:id==='new'?all.filter(x=>x.watched_count===0&&x.continue_count===0).length:all.filter(x=>x.episode_count>0&&x.watched_count>=x.episode_count).length}</span></button>`).join('')}</div>
+    </div>
+    ${base.length?`<div class="series-grid">${base.map(seriesCard).join('')}</div>`:`<div class="series-empty"><span>▤</span><h2>${all.length?'Hier ist gerade nichts.':'Noch keine Serien gefunden.'}</h2><p>${all.length?'Dieser Filter hat keine Treffer. Versuch eine andere Ansicht.':'Lege in der Verwaltung eine Bibliothek vom Typ „Serien“ an. BuddyFlix erkennt S01E01- und 1x01-Dateinamen automatisch.'}</p></div>`}
+  </section>`
 }
-function openSeries(encodedKey){
+function openSeries(encodedKey,preferredSeason=null){
   let key=decodeURIComponent(encodedKey),show=state.series.find(x=>x.key===key);if(!show)return;
   let art=seriesArtwork(show),el=document.createElement('div');el.className='series-detail-modal';
-  let seasons=show.seasons||[],active=show.next_episode?.season??seasons[0]?.number??0;
-  el.innerHTML=`<div class="series-detail"><div class="series-detail-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-detail-fade"></div><button class="close series-detail-close">×</button><div class="series-detail-head"><div class="section-kicker">SERIE</div><h1>${esc(show.title)}</h1><p>${show.season_count} Staffel${show.season_count===1?'':'n'} · ${show.episode_count} Folgen · ${show.watched_count} gesehen</p>${show.next_episode?`<div class="series-head-actions"><button class="btn primary" onclick="play(${show.next_episode.id},'${show.next_episode.progress>1&&show.next_episode.progress<95?'resume':'start'}')">▶ ${show.next_episode.progress>1&&show.next_episode.progress<95?'Weitersehen':'Nächste Folge'} · S${String(show.next_episode.season||0).padStart(2,'0')}E${String(show.next_episode.episode||0).padStart(2,'0')}</button></div>`:''}</div><div class="series-season-tabs">${seasons.map(x=>"<button class=\""+(x.number===active?'active':'')+"\" data-season=\""+x.number+"\">"+(x.number?'Staffel '+x.number:'Extras')+"</button>").join('')}</div><div class="series-episodes"></div></div>`;
+  let seasons=show.seasons||[],episodes=seriesEpisodes(show),first=episodes[0],active=preferredSeason??show.next_episode?.season??seasons[0]?.number??0;
+  let status=seriesState(show),overall=seriesProgress(show),primary=show.next_episode||first,primaryPct=primary?mediaProgress(primary):0;
+  el.innerHTML=`<div class="series-detail">
+    <div class="series-detail-bg" ${art?"style=\"background-image:url('"+esc(art)+"')\"":''}></div><div class="series-detail-fade"></div>
+    <button class="close series-detail-close" aria-label="Schließen">×</button>
+    <div class="series-detail-head">
+      <div class="series-detail-kicker"><span class="series-state ${status.id}">${status.label}</span><span>${show.season_count} Staffel${show.season_count===1?'':'n'}</span></div>
+      <h1>${esc(show.title)}</h1>
+      <p>${show.episode_count} Folgen · ${show.watched_count} gesehen · ${Math.max(0,show.episode_count-show.watched_count)} offen</p>
+      <div class="series-detail-overall"><div><span>Serienfortschritt</span><b>${Math.round(overall)}%</b></div><i><em style="width:${overall}%"></em></i></div>
+      <div class="series-head-actions">
+        ${primary?`<button class="btn primary" id="seriesPrimary">▶ ${status.id==='complete'?'Nochmal von vorn':primaryPct>1&&primaryPct<95?'Weitersehen':'Nächste Folge'}${status.id==='complete'?'':' · S'+String(primary.season||0).padStart(2,'0')+'E'+String(primary.episode||0).padStart(2,'0')}</button>`:''}
+      </div>
+    </div>
+    <div class="series-season-panel">
+      <div class="series-season-heading"><div><div class="section-kicker">EPISODEN</div><h2>Staffeln & Folgen</h2></div><div class="series-season-tabs">${seasons.map(x=>{let done=(x.episodes||[]).filter(e=>mediaProgress(e)>=95).length;return "<button class=\""+(x.number===active?'active':'')+"\" data-season=\""+x.number+"\">"+(x.number?'Staffel '+x.number:'Extras')+"<span>"+done+"/"+(x.episodes||[]).length+"</span></button>"}).join('')}</div></div>
+      <div class="series-season-summary"></div>
+      <div class="series-episodes"></div>
+    </div>
+  </div>`;
   document.body.append(el);let close=closeWithEscape(el);el.querySelector('.series-detail-close').onclick=close;
-  const draw=n=>{let season=seasons.find(x=>x.number===n)||seasons[0];el.querySelectorAll('.series-season-tabs button').forEach(b=>b.classList.toggle('active',Number(b.dataset.season)===season.number));el.querySelector('.series-episodes').innerHTML=(season?.episodes||[]).map(ep=>{let pct=mediaProgress(ep),resume=ep.position>20&&ep.duration>0&&pct<95;return `<article class="episode-row"><button class="episode-play" onclick="play(${ep.id},'${resume?'resume':'start'}')">▶</button><div class="episode-number">E${String(ep.episode||0).padStart(2,'0')}</div><div class="episode-copy"><strong>${esc(ep.title||ep.episode_title||'Episode')}</strong><span>${pct>=95?'✓ Gesehen':resume?(Math.round(pct)+'% angesehen'):'Noch nicht angesehen'}</span></div><button class="episode-info" onclick="detail(${ep.id})">ⓘ</button>${resume?"<div class=\"episode-progress\"><i style=\"width:"+pct+"%\"></i></div>":''}</article>`}).join('')};el.querySelectorAll('.series-season-tabs button').forEach(b=>b.onclick=()=>draw(Number(b.dataset.season)));draw(active)
+  let primaryButton=el.querySelector('#seriesPrimary');if(primaryButton&&primary)primaryButton.onclick=()=>play(primary.id,status.id==='complete'?'start':(primaryPct>1&&primaryPct<95?'resume':'start'));
+  const draw=n=>{
+    let season=seasons.find(x=>x.number===n)||seasons[0];if(!season)return;
+    active=season.number;
+    el.querySelectorAll('.series-season-tabs button').forEach(b=>b.classList.toggle('active',Number(b.dataset.season)===season.number));
+    let seasonEpisodes=season.episodes||[],done=seasonEpisodes.filter(ep=>mediaProgress(ep)>=95).length,inProgress=seasonEpisodes.filter(ep=>mediaProgress(ep)>1&&mediaProgress(ep)<95).length;
+    el.querySelector('.series-season-summary').innerHTML=`<span><b>${season.number?'Staffel '+season.number:'Extras'}</b> · ${seasonEpisodes.length} Folgen</span><span>${done} gesehen${inProgress?' · '+inProgress+' angefangen':''}</span>`;
+    let box=el.querySelector('.series-episodes');
+    box.innerHTML=seasonEpisodes.map(ep=>{
+      let pct=mediaProgress(ep),resume=ep.position>20&&ep.duration>0&&pct<95,watched=pct>=95,epArt=ep.backdrop||ep.poster||'';
+      let code='S'+String(ep.season||0).padStart(2,'0')+'E'+String(ep.episode||0).padStart(2,'0');
+      let statusText=watched?'Gesehen':resume?Math.round(pct)+'% angesehen':'Ungesehen';
+      return `<article class="episode-row ${watched?'watched':resume?'in-progress':''}">
+        <div class="episode-art" ${epArt?"style=\"background-image:url('"+esc(epArt)+"')\"":''}><button class="episode-play" onclick="play(${ep.id},'${resume?'resume':'start'}')" aria-label="${resume?'Fortsetzen':'Abspielen'}">▶</button></div>
+        <div class="episode-number"><b>${code}</b><span>Folge ${ep.episode||'–'}</span></div>
+        <div class="episode-copy"><strong>${esc(ep.title||ep.episode_title||'Episode')}</strong><div class="episode-meta"><span class="${watched?'done':resume?'active':''}">${watched?'✓ ':''}${statusText}</span>${ep.duration>0?`<span>${fmtTime(ep.duration)}</span>`:''}</div></div>
+        <div class="episode-actions"><button class="episode-info" onclick="detail(${ep.id})" title="Details">ⓘ</button><button class="episode-watch" data-watch-id="${ep.id}" data-watched="${watched?'1':'0'}" title="${watched?'Als ungesehen markieren':'Als gesehen markieren'}">${watched?'↺':'✓'}</button></div>
+        ${resume?`<div class="episode-progress"><i style="width:${pct}%"></i></div>`:''}
+      </article>`
+    }).join('');
+    box.querySelectorAll('[data-watch-id]').forEach(btn=>btn.onclick=async()=>{
+      let watched=btn.dataset.watched==='1',id=Number(btn.dataset.watchId);
+      try{
+        await api('/api/media/action',{method:'POST',body:JSON.stringify({media_id:id,action:watched?'mark_unwatched':'mark_watched'})});
+        await refresh();toast(watched?'Als ungesehen markiert':'Als gesehen markiert');close();openSeries(encodedKey,season.number)
+      }catch(e){toast(e.message)}
+    })
+  };
+  el.querySelectorAll('.series-season-tabs button').forEach(b=>b.onclick=()=>draw(Number(b.dataset.season)));draw(active)
 }
+
 async function renderAdmin(){
   const content=$('#content');
   if(content) content.innerHTML='<div class="muted">Verwaltung wird geladen…</div>';
