@@ -17,10 +17,15 @@ data class MediaEntry(
     val title: String,
     val year: Int,
     val overview: String,
+    val poster: String,
+    val backdrop: String,
+    val runtime: Int,
+    val added: String,
     val progress: Double,
     val position: Double,
     val duration: Double,
     val progressUpdated: String,
+    val favorite: Boolean,
     val kind: String,
     val seriesTitle: String,
     val season: Int,
@@ -32,9 +37,17 @@ data class MediaEntry(
                 "E" + episode.toString().padStart(2, '0')
             listOf(seriesTitle, code).filter { it.isNotBlank() }.joinToString(" · ")
         } else {
-            if (year > 0) year.toString() else "Film"
+            buildList {
+                if (year > 0) add(year.toString())
+                if (runtime > 0) add(runtime.toString() + " Min.")
+            }.joinToString(" · ").ifBlank { "Film" }
         }
 }
+
+data class SeriesSeason(
+    val number: Int,
+    val episodes: List<MediaEntry>
+)
 
 data class SeriesEntry(
     val key: String,
@@ -42,10 +55,21 @@ data class SeriesEntry(
     val seasonCount: Int,
     val episodeCount: Int,
     val watchedCount: Int,
-    val nextEpisode: MediaEntry?
+    val continueCount: Int,
+    val poster: String,
+    val backdrop: String,
+    val lastActivity: String,
+    val nextEpisode: MediaEntry?,
+    val seasons: List<SeriesSeason>
 )
 
 data class HomeData(
     val media: List<MediaEntry>,
     val series: List<SeriesEntry>
+)
+
+data class ServerCandidate(
+    val name: String,
+    val id: String,
+    val baseUrl: String
 )

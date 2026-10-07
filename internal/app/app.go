@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"math"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -305,12 +306,47 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.static)
 }
 func (s *Server) Run() error {
+	go s.discoveryLoop()
 	return http.ListenAndServe(s.cfg.ListenAddr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		s.mux.ServeHTTP(w, r)
 	}))
+}
+
+func (s *Server) discoveryPort() int {
+	addr := strings.TrimSpace(s.cfg.ListenAddr)
+	if _, port, err := net.SplitHostPort(addr); err == nil {
+		if n, convErr := strconv.Atoi(port); convErr == nil && n > 0 && n <= 65535 { return n }
+	}
+	if strings.HasPrefix(addr, ":") {
+		if n, err := strconv.Atoi(strings.TrimPrefix(addr, ":")); err == nil && n > 0 && n <= 65535 { return n }
+	}
+	return 8096
+}
+
+func (s *Server) discoveryLoop() {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 8097})
+	if err != nil { return }
+	defer conn.Close()
+	buf := make([]byte, 512)
+	for {
+		n, remote, err := conn.ReadFromUDP(buf)
+		if err != nil { return }
+		if strings.TrimSpace(string(buf[:n])) != "BUDDYFLIX_DISCOVER_V1" { continue }
+		s.mu.RLock()
+		payload := map[string]any{
+			"product": "BuddyFlix Media Server",
+			"server_name": s.st.Settings.ServerName,
+			"server_id": s.st.ServerID,
+			"port": s.discoveryPort(),
+		}
+		s.mu.RUnlock()
+		body, err := json.Marshal(payload)
+		if err != nil { continue }
+		_, _ = conn.WriteToUDP(body, remote)
+	}
 }
 func jsonOut(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

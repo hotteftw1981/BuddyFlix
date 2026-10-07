@@ -94,13 +94,30 @@ class BuddyApi(
             for (i in 0 until seriesJson.length()) {
                 val s = seriesJson.getJSONObject(i)
                 val next = s.optJSONObject("next_episode")?.let(::parseMedia)
+                val seasonsJson = s.optJSONArray("seasons") ?: JSONArray()
+                val seasons = buildList {
+                    for (j in 0 until seasonsJson.length()) {
+                        val season = seasonsJson.getJSONObject(j)
+                        add(
+                            SeriesSeason(
+                                number = season.optInt("number"),
+                                episodes = parseMediaArray(season.optJSONArray("episodes") ?: JSONArray())
+                            )
+                        )
+                    }
+                }
                 add(SeriesEntry(
                     key = s.optString("key"),
                     title = s.optString("title", "Serie"),
                     seasonCount = s.optInt("season_count"),
                     episodeCount = s.optInt("episode_count"),
                     watchedCount = s.optInt("watched_count"),
-                    nextEpisode = next
+                    continueCount = s.optInt("continue_count"),
+                    poster = s.optString("poster"),
+                    backdrop = s.optString("backdrop"),
+                    lastActivity = s.optString("last_activity"),
+                    nextEpisode = next,
+                    seasons = seasons
                 ))
             }
         }
@@ -116,6 +133,13 @@ class BuddyApi(
         request("POST", "/api/progress", body)
     }
 
+    suspend fun mediaAction(mediaId: Long, action: String) {
+        val body = JSONObject()
+            .put("media_id", mediaId)
+            .put("action", action)
+        request("POST", "/api/media/action", body)
+    }
+
     suspend fun logoutDevice() {
         request("POST", "/api/v1/device/logout", JSONObject())
     }
@@ -127,6 +151,13 @@ class BuddyApi(
         if (profileId > 0) put("X-BuddyFlix-Profile", profileId.toString())
     }
 
+    fun imageUrl(path: String): String {
+        val value = path.trim()
+        if (value.isBlank()) return ""
+        if (value.startsWith("http://") || value.startsWith("https://")) return value
+        return baseUrl + if (value.startsWith("/")) value else "/" + value
+    }
+
     private fun parseMediaArray(array: JSONArray): List<MediaEntry> = buildList {
         for (i in 0 until array.length()) add(parseMedia(array.getJSONObject(i)))
     }
@@ -136,10 +167,15 @@ class BuddyApi(
         title = m.optString("title", "Unbekannt"),
         year = m.optInt("year"),
         overview = m.optString("overview"),
+        poster = m.optString("poster"),
+        backdrop = m.optString("backdrop"),
+        runtime = m.optInt("runtime"),
+        added = m.optString("added"),
         progress = m.optDouble("progress", 0.0),
         position = m.optDouble("position", 0.0),
         duration = m.optDouble("duration", 0.0),
         progressUpdated = m.optString("progress_updated"),
+        favorite = m.optBoolean("favorite", false),
         kind = m.optString("kind", "movie"),
         seriesTitle = m.optString("series_title"),
         season = m.optInt("season"),
