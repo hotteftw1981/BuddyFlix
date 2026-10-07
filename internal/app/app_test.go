@@ -716,3 +716,63 @@ func TestProfileCreateSelectAndDelete(t *testing.T) {
 		t.Fatalf("profile was not deleted: %+v", s.st.Profiles)
 	}
 }
+
+
+func TestFavoritesAreProfileSpecific(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{{ID:1, Title:"Movie"}}
+	s.st.NextMediaID = 2
+	s.st.Profiles = append(s.st.Profiles, Profile{ID:2, Name:"Gast", Avatar:"🎬"})
+	s.st.NextProfileID = 3
+	s.st.ProfileProgress[2] = map[int64]Progress{}
+	s.st.ProfileFavorites[2] = map[int64]bool{}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/media/action", bytes.NewBufferString(`{"media_id":1,"action":"favorite"}`))
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"2"})
+	rec := httptest.NewRecorder()
+	s.mediaAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("favorite failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media?id=1", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"2"})
+	rec = httptest.NewRecorder()
+	s.media(rec, req)
+	var guest []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &guest); err != nil { t.Fatal(err) }
+	if len(guest) != 1 || !guest[0].Favorite {
+		t.Fatalf("guest favorite missing: %+v", guest)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/media?id=1", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"1"})
+	rec = httptest.NewRecorder()
+	s.media(rec, req)
+	var main []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &main); err != nil { t.Fatal(err) }
+	if len(main) != 1 || main[0].Favorite {
+		t.Fatalf("favorite leaked into main profile: %+v", main)
+	}
+}
+
+func TestMediaReturnsProgressUpdatedForHistory(t *testing.T) {
+	s := newTestServer(t)
+	s.mu.Lock()
+	s.st.Media = []Media{{ID:1, Title:"Movie"}}
+	s.st.Progress[1] = Progress{Position:50, Duration:100, Updated:"2026-10-07T18:00:00+02:00"}
+	s.mu.Unlock()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/media?id=1", nil)
+	req.AddCookie(&http.Cookie{Name:"buddyflix_profile", Value:"1"})
+	rec := httptest.NewRecorder()
+	s.media(rec, req)
+	if rec.Code != http.StatusOK { t.Fatalf("media failed: %d", rec.Code) }
+	var items []Media
+	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil { t.Fatal(err) }
+	if len(items) != 1 || items[0].ProgressUpdated == "" || items[0].Progress != 50 {
+		t.Fatalf("history metadata missing: %+v", items)
+	}
+}
