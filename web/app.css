@@ -622,3 +622,80 @@ body.cinema-focus .hero-nav-right{right:170px}
   .mylist-head h1{font-size:48px}
   .mylist-empty{margin-top:35px;padding:38px 20px}
 }
+
+
+/* Dev97: series library foundation */
+.series-page{position:relative;min-height:calc(100vh - 74px);padding:48px 42px 80px;background:
+  radial-gradient(circle at 85% 0%,rgba(255,107,26,.08),transparent 30rem),
+  linear-gradient(180deg,#080a0e,#07080b)}
+.series-page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:30px}
+.series-page-head h1{font-size:clamp(52px,6vw,86px);line-height:.9;letter-spacing:-.055em;margin:6px 0 12px}
+.series-page-head p{margin:0;color:#7d8797;font-size:13px}
+.series-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.series-rail{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(300px,390px);gap:16px;overflow-x:auto;padding:4px 6px 18px 2px;scrollbar-width:thin;scrollbar-color:#343a46 transparent}
+.series-card{position:relative;min-height:220px;border-radius:24px;overflow:hidden;border:1px solid #282f39;background:#11151b;cursor:pointer;isolation:isolate;box-shadow:0 18px 46px rgba(0,0,0,.24);transition:.22s}
+.series-card:hover{transform:translateY(-5px);border-color:#75462d;box-shadow:0 28px 70px rgba(0,0,0,.38)}
+.series-card-bg{position:absolute;inset:0;background:
+  linear-gradient(135deg,#222934,#10141a);
+  background-size:cover;background-position:center;transition:transform .35s ease,filter .35s ease}
+.series-card:hover .series-card-bg{transform:scale(1.04);filter:saturate(1.08)}
+.series-card-shade{position:absolute;inset:0;background:
+  linear-gradient(0deg,rgba(5,7,10,.98) 0%,rgba(5,7,10,.68) 33%,rgba(5,7,10,.18) 70%),
+  linear-gradient(90deg,rgba(5,7,10,.55),transparent 64%)}
+.series-card-copy{position:absolute;z-index:2;left:20px;right:20px;bottom:20px}
+.series-card-copy>span{display:block;font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#ff9760;margin-bottom:6px}
+.series-card-copy h3{font-size:25px;line-height:1.02;letter-spacing:-.035em;margin:0;color:#fff}
+.series-card-copy small{display:block;margin-top:7px;color:#9ca5b4;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.series-card-progress{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.1);z-index:3}
+.series-card-progress i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#ff9a60)}
+.series-empty{max-width:760px;margin:90px auto 0;text-align:center;padding:54px 38px;border:1px dashed #313844;border-radius:30px;background:#0e1116}
+.series-empty>span{display:grid;place-items:center;width:92px;height:92px;margin:0 auto 22px;border-radius:28px;background:#171c24;border:1px solid #343c48;color:#ff8a4a;font-size:42px}
+.series-empty h2{font-size:34px;letter-spacing:-.04em;margin:0 0 8px}
+.series-empty p{max-width:560px;margin:0 auto;color:#7f8998;line-height:1.65}
+
+.series-detail-modal{position:fixed;inset:0;z-index:3900;background:#06070a;overflow:auto}
+.series-detail{position:relative;min-height:100vh;padding:clamp(110px,14vh,180px) clamp(32px,7vw,120px) 80px;isolation:isolate}
+.series-detail-bg{position:absolute;z-index:-3;inset:0 0 auto 0;height:66vh;background:linear-gradient(135deg,#222934,#10141a);background-size:cover;background-position:center 24%;filter:saturate(1.08)}
+.series-detail-fade{position:absolute;z-index:-2;inset:0;background:
+  linear-gradient(0deg,#07080b 36%,rgba(7,8,11,.84) 56%,rgba(7,8,11,.22) 100%),
+  linear-gradient(90deg,#07080be8 0%,rgba(7,8,11,.68) 44%,rgba(7,8,11,.18) 100%)}
+.series-detail-close{position:fixed;z-index:8;right:30px;top:26px;width:48px;height:48px;border-radius:50%;background:#11151bd9;border:1px solid #3a424f;color:#fff;font-size:22px;backdrop-filter:blur(12px)}
+.series-detail-head{max-width:840px;margin-bottom:38px}
+.series-detail-head h1{font-size:clamp(54px,7vw,100px);line-height:.88;letter-spacing:-.06em;margin:8px 0 16px}
+.series-detail-head p{margin:0;color:#a0a9b7;font-size:13px}
+.series-season-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.series-season-tabs button{border:1px solid #303844;background:#10141a;color:#8f99a8;padding:10px 14px;border-radius:12px;cursor:pointer;font-size:11px;font-weight:800}
+.series-season-tabs button:hover{color:#fff;border-color:#4a5564}
+.series-season-tabs button.active{background:#2b180e;border-color:#7d4424;color:#ffad7a}
+.series-episodes{display:grid;gap:9px;max-width:980px}
+.episode-row{position:relative;display:grid;grid-template-columns:48px 54px minmax(0,1fr) 42px;align-items:center;gap:12px;min-height:78px;padding:12px 14px;border:1px solid #252c36;border-radius:17px;background:rgba(13,16,21,.88);backdrop-filter:blur(14px);overflow:hidden;transition:.18s}
+.episode-row:hover{background:#141922;border-color:#424c59;transform:translateX(3px)}
+.episode-play,.episode-info{border:1px solid #343c48;background:#171c23;color:#fff;cursor:pointer}
+.episode-play{width:46px;height:46px;border-radius:14px;font-size:14px}
+.episode-play:hover{background:var(--accent);color:#170b05;border-color:transparent}
+.episode-number{font-size:12px;font-weight:900;letter-spacing:.08em;color:#ff8e50}
+.episode-copy{min-width:0;display:grid;gap:5px}
+.episode-copy strong{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.episode-copy span{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#737d8d}
+.episode-info{width:38px;height:38px;border-radius:12px}
+.episode-info:hover{background:#252c36}
+.episode-progress{position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffffff0f}
+.episode-progress i{display:block;height:100%;background:var(--accent)}
+
+@media(max-width:900px){
+  .series-page{padding:36px 20px 60px}
+  .series-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .series-detail{padding:130px 24px 60px}
+  .series-detail-head h1{font-size:60px}
+}
+@media(max-width:560px){
+  .series-grid{grid-template-columns:1fr}
+  .series-rail{grid-auto-columns:82vw}
+  .series-card{min-height:190px}
+  .series-detail{padding:120px 16px 42px}
+  .series-detail-head h1{font-size:46px}
+  .series-season-tabs{overflow-x:auto;flex-wrap:nowrap}
+  .series-season-tabs button{white-space:nowrap}
+  .episode-row{grid-template-columns:42px 45px minmax(0,1fr);padding:10px}
+  .episode-info{display:none}
+}
