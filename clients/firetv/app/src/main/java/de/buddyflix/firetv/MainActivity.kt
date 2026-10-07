@@ -34,6 +34,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -73,19 +75,34 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val Bg = Color(0xFF05070A)
-private val Panel = Color(0xFF0F141C)
-private val PanelFocused = Color(0xFF18202B)
-private val Accent = Color(0xFFFF6547)
-private val AccentSoft = Color(0xFFFFA06C)
-private val Muted = Color(0xFF8B96A7)
-private val Line = Color(0xFF27303B)
+private val Bg = Color(0xFF07090D)
+private val Panel = Color(0xFF11161E)
+private val PanelFocused = Color(0xFF192231)
+private val Accent = Color(0xFF78AFFF)
+private val AccentSoft = Color(0xFFB7D4FF)
+private val Muted = Color(0xFF929BA9)
+private val Line = Color(0xFF2A3442)
+private val FieldBg = Color(0xFF0B0F15)
+private val Error = Color(0xFFFF8E9B)
+
+private val BuddyMaterialColors = darkColorScheme(
+    primary = Accent,
+    onPrimary = Color(0xFF07101E),
+    background = Bg,
+    onBackground = Color.White,
+    surface = Panel,
+    onSurface = Color.White,
+    surfaceVariant = PanelFocused,
+    onSurfaceVariant = Muted,
+    outline = Line,
+    error = Error
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            MaterialTheme(colorScheme = BuddyMaterialColors) {
                 androidx.tv.material3.MaterialTheme {
                     BuddyFlixTvApp()
                 }
@@ -305,99 +322,183 @@ private fun ConnectionScreen(
         discovering = false
     }
 
-    Row(
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        focusedBorderColor = Accent,
+        unfocusedBorderColor = Line,
+        focusedLabelColor = AccentSoft,
+        unfocusedLabelColor = Muted,
+        cursorColor = Accent,
+        focusedContainerColor = FieldBg,
+        unfocusedContainerColor = FieldBg,
+        errorBorderColor = Error,
+        errorLabelColor = Error
+    )
+
+    Box(
         modifier = Modifier.fillMaxSize().background(
             Brush.radialGradient(
-                colors = listOf(Color(0xFF34140D), Bg),
-                radius = 1000f
+                colors = listOf(Color(0xFF111A28), Bg),
+                radius = 1150f
             )
-        ).padding(horizontal = 72.dp, vertical = 48.dp),
-        verticalAlignment = Alignment.CenterVertically
+        )
     ) {
-        Column(Modifier.width(430.dp)) {
-            Text("BUDDYFLIX", color = Accent, fontWeight = FontWeight.Black, letterSpacing = 5.sp)
-            Spacer(Modifier.height(14.dp))
-            Text("Dein Kino.\nJetzt auf Fire TV.", color = Color.White, fontSize = 46.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "BuddyFlix sucht deinen Server automatisch im Heimnetz. Falls dein Router Broadcasts blockiert, kannst du die Adresse weiterhin manuell eingeben.",
-                color = Muted,
-                fontSize = 15.sp,
-                lineHeight = 23.sp
-            )
-            Spacer(Modifier.height(24.dp))
-            if (discovering) {
-                Text("Suche BuddyFlix im Netzwerk …", color = AccentSoft, fontSize = 13.sp)
-            } else if (candidates.isNotEmpty()) {
-                Text("GEFUNDENE SERVER", color = AccentSoft, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(10.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    candidates.take(3).forEach { candidate ->
-                        TvFocusBox(
-                            modifier = Modifier.fillMaxWidth().height(64.dp),
-                            onClick = { server = candidate.baseUrl }
-                        ) {
-                            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column {
-                                    Text(candidate.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(candidate.baseUrl, color = Muted, fontSize = 11.sp)
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 70.dp, vertical = 44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                modifier = Modifier.width(445.dp).height(500.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("BUDDYFLIX", color = Accent, fontWeight = FontWeight.Black, letterSpacing = 5.sp)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Dein Kino.\nAuf deinem Fire TV.",
+                    color = Color.White,
+                    fontSize = 44.sp,
+                    lineHeight = 47.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Wir suchen deinen BuddyFlix-Server automatisch im Heimnetz. Du kannst die Adresse jederzeit auch selbst eingeben.",
+                    color = Muted,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+                Spacer(Modifier.height(26.dp))
+
+                Text(
+                    "SERVER IM NETZWERK",
+                    color = AccentSoft,
+                    fontSize = 9.sp,
+                    letterSpacing = 2.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(9.dp))
+
+                Box(Modifier.fillMaxWidth().height(164.dp)) {
+                    when {
+                        discovering -> {
+                            Column(
+                                Modifier.fillMaxSize().background(Color(0x6611161E), RoundedCornerShape(18.dp))
+                                    .border(1.dp, Line, RoundedCornerShape(18.dp)).padding(18.dp),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("Suche läuft …", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(5.dp))
+                                Text("BuddyFlix hört im lokalen Netz nach deinem Server.", color = Muted, fontSize = 12.sp)
+                            }
+                        }
+                        candidates.isNotEmpty() -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                candidates.take(2).forEach { candidate ->
+                                    TvFocusBox(
+                                        modifier = Modifier.fillMaxWidth().height(74.dp),
+                                        onClick = { server = candidate.baseUrl }
+                                    ) {
+                                        Row(
+                                            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(candidate.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                                Text(candidate.baseUrl, color = Muted, fontSize = 10.sp)
+                                            }
+                                            Spacer(Modifier.weight(1f))
+                                            Text("AUSWÄHLEN", color = AccentSoft, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
-                                Spacer(Modifier.weight(1f))
-                                Text("VERWENDEN", color = AccentSoft, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        else -> {
+                            Column(
+                                Modifier.fillMaxSize().background(Color(0x5511161E), RoundedCornerShape(18.dp))
+                                    .border(1.dp, Line, RoundedCornerShape(18.dp)).padding(18.dp),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text("Kein Server automatisch gefunden", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                Text("Kein Problem — rechts kannst du die Adresse manuell eintragen.", color = Muted, fontSize = 11.sp)
+                                Spacer(Modifier.height(10.dp))
+                                Button(onClick = {
+                                    scope.launch {
+                                        discovering = true
+                                        candidates = ServerDiscovery.discover()
+                                        if (candidates.size == 1) server = candidates.first().baseUrl
+                                        discovering = false
+                                    }
+                                }) { Text("Erneut suchen") }
                             }
                         }
                     }
                 }
-            } else {
-                Button(onClick = {
-                    scope.launch {
-                        discovering = true
-                        candidates = ServerDiscovery.discover()
-                        if (candidates.size == 1) server = candidates.first().baseUrl
-                        discovering = false
-                    }
-                }) { Text("Erneut im LAN suchen") }
             }
-        }
 
-        Spacer(Modifier.width(72.dp))
-
-        Column(
-            Modifier.width(520.dp).background(Color(0xE60C1118), RoundedCornerShape(28.dp))
-                .border(1.dp, Line, RoundedCornerShape(28.dp)).padding(30.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text("Fire TV verbinden", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("Nur beim ersten Mal nötig.", color = Muted, fontSize = 13.sp)
-            OutlinedTextField(
-                value = server,
-                onValueChange = { server = it },
-                label = { androidx.compose.material3.Text("BuddyFlix-Server") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = username,
-                onValueChange = { username = it },
-                label = { androidx.compose.material3.Text("Benutzer") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { androidx.compose.material3.Text("Passwort") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-            )
-            if (!error.isNullOrBlank()) Text(error, color = Color(0xFFFFA08D), fontSize = 13.sp)
-            Button(
-                onClick = { if (!loading) onConnect(server, username, password) },
-                enabled = !loading && server.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+            Column(
+                modifier = Modifier.width(500.dp).height(500.dp)
+                    .background(Color(0xF20C1016), RoundedCornerShape(26.dp))
+                    .border(1.dp, Line, RoundedCornerShape(26.dp))
+                    .padding(horizontal = 30.dp, vertical = 28.dp),
+                verticalArrangement = Arrangement.Center
             ) {
-                Text(if (loading) "Verbinde …" else "Mit BuddyFlix verbinden")
+                Text("Fire TV verbinden", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("Einmal anmelden. Danach merkt sich BuddyFlix diesen Cube.", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(20.dp))
+
+                OutlinedTextField(
+                    value = server,
+                    onValueChange = { server = it },
+                    label = { androidx.compose.material3.Text("Serveradresse") },
+                    placeholder = { androidx.compose.material3.Text("192.168.1.50:8096") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = fieldColors
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { androidx.compose.material3.Text("Benutzer") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = fieldColors
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { androidx.compose.material3.Text("Passwort") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = fieldColors,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+
+                Box(Modifier.fillMaxWidth().height(46.dp).padding(top = 8.dp)) {
+                    if (!error.isNullOrBlank()) {
+                        Text(error, color = Error, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    } else {
+                        Text("Dein Passwort wird nicht auf dem Fire TV gespeichert.", color = Muted, fontSize = 10.sp)
+                    }
+                }
+
+                Button(
+                    onClick = { if (!loading) onConnect(server, username, password) },
+                    enabled = !loading && server.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (loading) "Verbinde …" else "Verbinden")
+                }
             }
         }
     }
