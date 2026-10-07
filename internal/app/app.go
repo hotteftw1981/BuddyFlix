@@ -79,6 +79,8 @@ type Media struct {
 	Progress           float64           `json:"progress"`
 	Position           float64           `json:"position"`
 	Duration           float64           `json:"duration"`
+	ProgressUpdated    string            `json:"progress_updated,omitempty"`
+	Favorite           bool              `json:"favorite,omitempty"`
 }
 type Progress struct {
 	Position float64 `json:"position"`
@@ -126,7 +128,8 @@ type Store struct {
 	Media           []Media                      `json:"media"`
 	Profiles        []Profile                    `json:"profiles,omitempty"`
 	Progress        map[int64]Progress           `json:"progress"`
-	ProfileProgress map[int64]map[int64]Progress `json:"profile_progress,omitempty"`
+	ProfileProgress  map[int64]map[int64]Progress `json:"profile_progress,omitempty"`
+	ProfileFavorites map[int64]map[int64]bool     `json:"profile_favorites,omitempty"`
 }
 
 type Server struct {
@@ -157,7 +160,7 @@ func (s *Server) dbPath() string { return filepath.Join(s.cfg.DataDir, "buddyfli
 func (s *Server) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.st = Store{NextLibraryID: 1, NextMediaID: 1, NextProfileID: 1, Progress: map[int64]Progress{}, ProfileProgress: map[int64]map[int64]Progress{}}
+	s.st = Store{NextLibraryID: 1, NextMediaID: 1, NextProfileID: 1, Progress: map[int64]Progress{}, ProfileProgress: map[int64]map[int64]Progress{}, ProfileFavorites: map[int64]map[int64]bool{}}
 	s.st.Settings.ServerName = "BuddyFlix"
 	s.st.Settings.AdminUser = s.cfg.AdminUser
 	h := sha256.Sum256([]byte(s.cfg.AdminPassword))
@@ -184,6 +187,9 @@ func (s *Server) load() error {
 	}
 	if s.st.ProfileProgress == nil {
 		s.st.ProfileProgress = map[int64]map[int64]Progress{}
+	}
+	if s.st.ProfileFavorites == nil {
+		s.st.ProfileFavorites = map[int64]map[int64]bool{}
 	}
 	if len(s.st.Profiles) == 0 {
 		s.st.Profiles = []Profile{{ID: 1, Name: "Hauptprofil", Avatar: "🍿", Created: time.Now().Format(time.RFC3339)}}
@@ -566,6 +572,12 @@ func (s *Server) profileProgressLocked(profileID int64) map[int64]Progress {
 	return s.st.ProfileProgress[profileID]
 }
 
+func (s *Server) profileFavoritesLocked(profileID int64) map[int64]bool {
+	if s.st.ProfileFavorites == nil { s.st.ProfileFavorites = map[int64]map[int64]bool{} }
+	if s.st.ProfileFavorites[profileID] == nil { s.st.ProfileFavorites[profileID] = map[int64]bool{} }
+	return s.st.ProfileFavorites[profileID]
+}
+
 func (s *Server) profiles(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -590,6 +602,7 @@ func (s *Server) profiles(w http.ResponseWriter, r *http.Request) {
 		s.st.Profiles = append(s.st.Profiles, p)
 		if s.st.ProfileProgress == nil { s.st.ProfileProgress = map[int64]map[int64]Progress{} }
 		s.st.ProfileProgress[p.ID] = map[int64]Progress{}
+		s.profileFavoritesLocked(p.ID)
 		err := s.saveLocked()
 		s.mu.Unlock()
 		if err != nil { jsonErr(w, 500, err.Error()); return }
@@ -630,6 +643,7 @@ func (s *Server) profiles(w http.ResponseWriter, r *http.Request) {
 		if !found { s.mu.Unlock(); jsonErr(w, 404, "profile not found"); return }
 		s.st.Profiles = next
 		delete(s.st.ProfileProgress, id)
+		delete(s.st.ProfileFavorites, id)
 		err := s.saveLocked()
 		s.mu.Unlock()
 		if err != nil { jsonErr(w, 500, err.Error()); return }
@@ -735,6 +749,7 @@ func (s *Server) libraries(w http.ResponseWriter, r *http.Request) {
 			} else {
 				delete(s.st.Progress, m.ID)
 				for pid := range s.st.ProfileProgress { delete(s.st.ProfileProgress[pid], m.ID) }
+				for pid := range s.st.ProfileFavorites { delete(s.st.ProfileFavorites[pid], m.ID) }
 			}
 		}
 		s.st.Media = med
@@ -988,6 +1003,7 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 	profileID := s.activeProfileID(r)
 	s.mu.Lock()
 	progressMap := s.profileProgressLocked(profileID)
+	favorites := s.profileFavoritesLocked(profileID)
 	s.mu.Unlock()
 	s.mu.RLock()
 	out := make([]Media, 0)
@@ -1004,10 +1020,12 @@ func (s *Server) media(w http.ResponseWriter, r *http.Request) {
 		if p, ok := progressMap[m.ID]; ok {
 			m.Position = p.Position
 			m.Duration = p.Duration
+			m.ProgressUpdated = p.Updated
 			if p.Duration > 0 {
 				m.Progress = p.Position / p.Duration * 100
 			}
 		}
+		m.Favorite = favorites[m.ID]
 		out = append(out, m)
 	}
 	s.mu.RUnlock()
@@ -1025,6 +1043,7 @@ func (s *Server) mediaAction(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	progressMap := s.profileProgressLocked(profileID)
+	favorites := s.profileFavoritesLocked(profileID)
 	for i := range s.st.Media {
 		if s.st.Media[i].ID != x.MediaID { continue }
 		switch x.Action {
@@ -1032,6 +1051,10 @@ func (s *Server) mediaAction(w http.ResponseWriter, r *http.Request) {
 			delete(progressMap, x.MediaID)
 		case "mark_watched":
 			progressMap[x.MediaID] = Progress{Position: 1, Duration: 1, Updated: time.Now().Format(time.RFC3339)}
+		case "favorite":
+			favorites[x.MediaID] = true
+		case "unfavorite":
+			delete(favorites, x.MediaID)
 		case "lock_metadata":
 			s.st.Media[i].MetadataLocked = true
 		case "unlock_metadata":
@@ -1055,6 +1078,7 @@ func (s *Server) mediaCleanup(w http.ResponseWriter, r *http.Request) {
 		if m.Missing {
 			delete(s.st.Progress, m.ID)
 			for pid := range s.st.ProfileProgress { delete(s.st.ProfileProgress[pid], m.ID) }
+			for pid := range s.st.ProfileFavorites { delete(s.st.ProfileFavorites[pid], m.ID) }
 			removed++
 			continue
 		}
