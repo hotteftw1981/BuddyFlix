@@ -1876,6 +1876,10 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	if p == "." || p == "" {
 		p = "index.html"
 	}
+	if p == "index.html" || strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+	}
 	roots := []string{"web", filepath.Join(filepath.Dir(os.Args[0]), "web")}
 	for _, root := range roots {
 		b, e := os.ReadFile(filepath.Join(root, p))
@@ -1886,10 +1890,6 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(b)
 			return
 		}
-	}
-	if p == "index.html" || strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
-		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Header().Set("Pragma", "no-cache")
 	}
 	if p != "index.html" {
 		for _, root := range roots {

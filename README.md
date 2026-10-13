@@ -81,6 +81,23 @@ Aktuell liegt der Schwerpunkt klar auf **Direct Play** und geringer Last auf sch
 
 ---
 
+## ✨ Studio UI — Web-Makeover (develop)
+
+Die **eigentliche BuddyFlix-Weboberfläche auf dem NAS** erhält einen einheitlichen, ruhigen Studio-Look. Nicht mit der separaten Fire-TV-App verwechseln.
+
+- Anthrazit- und Graphit-Palette mit dezenten Kontrasten statt wechselnder Farbstile
+- großzügige Desktop-Navigation und kompakter Header mit Profilwahl und Suche
+- neue Startseite mit kuratiertem Spotlight, vier Bibliothekskennzahlen und Medienregalen
+- kein automatisches Durchwechseln des Hintergrunds mehr
+- zusammengehörige Gestaltung für Filme, Serien, Meine Liste, Verwaltung und Detailansichten
+- kompakte Karten ohne aufdringliche Hover-Sprünge
+- mobile Navigation am unteren Bildschirmrand
+- eigene Studio-Stylesheet-Schicht, die ältere Komponenten bis zur Konsolidierung überlagert
+
+**Status:** Auf `develop` implementiert; die visuelle Prüfung im echten QNAP-Browser steht noch aus. Fire TV ist davon unabhängig und bleibt experimentell.
+
+---
+
 ## 🖥️ Weboberfläche
 
 Der Webclient befindet sich ebenfalls aktiv in Entwicklung und enthält unter anderem:
