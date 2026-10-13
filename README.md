@@ -81,20 +81,24 @@ Aktuell liegt der Schwerpunkt klar auf **Direct Play** und geringer Last auf sch
 
 ---
 
-## ✨ Studio UI — Web-Makeover (develop)
+## ✨ BuddyFlix Next — vollständiger Webclient-Neubau (develop)
 
-Die **eigentliche BuddyFlix-Weboberfläche auf dem NAS** erhält einen einheitlichen, ruhigen Studio-Look. Nicht mit der separaten Fire-TV-App verwechseln.
+BuddyFlix Next ersetzt die **bisherige Weboberfläche auf dem QNAP** durch einen eigenständigen Client. Dies ist **kein zusätzliches Theme** der ursprünglichen Anwendung.
 
-- Anthrazit- und Graphit-Palette mit dezenten Kontrasten statt wechselnder Farbstile
-- großzügige Desktop-Navigation und kompakter Header mit Profilwahl und Suche
-- neue Startseite mit kuratiertem Spotlight, vier Bibliothekskennzahlen und Medienregalen
-- kein automatisches Durchwechseln des Hintergrunds mehr
-- zusammengehörige Gestaltung für Filme, Serien, Meine Liste, Verwaltung und Detailansichten
-- kompakte Karten ohne aufdringliche Hover-Sprünge
-- mobile Navigation am unteren Bildschirmrand
-- eigene Studio-Stylesheet-Schicht, die ältere Komponenten bis zur Konsolidierung überlagert
+- Neues Navigationskonzept mit oberer Hauptnavigation
+- Neue modulare Startseite mit Bento-Cockpit, Film des Abends, Weiterschauen und kompakter Entdeckeransicht
+- Eigenständige Filme-, Serien-, Weiterschauen- und Merklisten-Bereiche
+- Film- und Seriendetails als echte Seiten statt bisheriger Dialogführung
+- Serien mit Staffelwahl, Folgenübersicht und separatem Fortschritt
+- Neuer Profilwechsel inklusive Anlegen und Bearbeiten
+- Neuer Verwaltungsbereich mit eigenen Arbeitsflächen für Bibliotheken, Medienpflege, Metadaten und Sicherheit
+- Weiterhin Direct Play, Fortschritt, Favoriten, Metadaten über bestehende Server-APIs
+- Neues responsives Stylesheet und JavaScript ohne Abhängigkeiten vom bisherigen Frontend
+- **Nur das ursprüngliche BuddyFlix-Logo bleibt als visueller Markenbestandteil erhalten**
 
-**Status:** Auf `develop` implementiert; die visuelle Prüfung im echten QNAP-Browser steht noch aus. Fire TV ist davon unabhängig und bleibt experimentell.
+Neue Einstiegspunkte: `web/index.html`, `web/buddyflix-next.js`, `web/buddyflix-next.css`. Alte Webdateien werden vom neuen HTML nicht geladen.
+
+**Status:** Technischer Entwicklungsstand; End-to-End-Bedienung und Wiedergabe müssen auf der echten QNAP-Installation geprüft werden.
 
 ---
 

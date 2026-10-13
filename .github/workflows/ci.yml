@@ -47,8 +47,10 @@ jobs:
       - name: Test
         run: go test ./...
 
-      - name: Check frontend JavaScript
-        run: node --check web/app.js
+      - name: Check BuddyFlix Next JavaScript
+        run: |
+          node --check web/buddyflix-next.js
+          node -e "const fs=require('fs');const html=fs.readFileSync('web/index.html','utf8'); for(const asset of ['buddyflix-next.js','buddyflix-next.css','assets/buddyflix-logo.png']) { if(!html.includes(asset) || !fs.existsSync('web/'+asset)) throw Error('Missing entrypoint asset '+asset); } if(html.includes('/app.js') || html.includes('/app.css')) throw Error('Legacy app still referenced'); console.log('New UI entrypoint verified');"
 
       - name: Check BuddyFlix metadata project credential
         env:
