@@ -28,9 +28,82 @@ function installSpatialNavigation(){
 }
 function setupView(info={}){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card setup-card" id="setup"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><div class="setup-step">ERSTEINRICHTUNG</div><h1>Mach es zu deinem Server.</h1><div class="muted">Einmal kurz einrichten, danach gehört die Standard-Anmeldung der Vergangenheit an.</div><label class="field">Servername<input name="server_name" value="${esc(info.server_name||'BuddyFlix')}"></label><label class="field">Admin-Benutzer<input name="admin_user" value="admin" autocomplete="username"></label><label class="field">Admin-Passwort<input name="password" type="password" minlength="8" autocomplete="new-password"></label><label class="field">Passwort wiederholen<input name="repeat" type="password" minlength="8" autocomplete="new-password"></label><div class="notice">Metadatenanbieter werden von BuddyFlix verwaltet. Für die normale Einrichtung ist kein eigener API-Key vorgesehen.</div><button class="btn primary">BuddyFlix einrichten</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#setup').onsubmit=async e=>{e.preventDefault();if(e.target.password.value!==e.target.repeat.value){$('#err').textContent='Die Passwörter stimmen nicht überein.';return}try{await api('/api/setup',{method:'POST',body:JSON.stringify({server_name:e.target.server_name.value,admin_user:e.target.admin_user.value,password:e.target.password.value})});toast('Einrichtung abgeschlossen');loginView()}catch(x){$('#err').textContent=x.message}}}
 function loginView(){document.querySelector('#app').innerHTML=`<div class="login"><form class="login-card" id="login"><div class="brand brand-image"><img class="brand-logo" src="/assets/buddyflix-logo.png" alt="BuddyFlix"></div><h1>Willkommen zurück.</h1><div class="muted">Dein schlanker Media Server.</div><label class="field">Benutzer<input name="u" placeholder="Benutzername" autocomplete="username"></label><label class="field">Passwort<input name="p" type="password" autocomplete="current-password"></label><button class="btn primary">Anmelden</button><div id="err" class="muted" style="margin-top:14px"></div></form></div>`;$('#login').onsubmit=async e=>{e.preventDefault();try{await api('/api/login',{method:'POST',body:JSON.stringify({Username:e.target.u.value,Password:e.target.p.value})});await boot()}catch(x){$('#err').textContent=x.message}}}
-function shell(){let p=state.activeProfile||state.profiles[0]||{name:'Profil',avatar:'🍿'};document.querySelector('#app').innerHTML=`<div class="shell theater-shell"><aside class="side side-rail"><div class="rail-logo"><img src="/assets/buddyflix-logo.png" alt="BuddyFlix"><span>DEIN KINO</span></div><nav class="nav rail-nav" aria-label="Hauptnavigation"><button data-v="home" class="active" title="Startseite"><span class="nav-icon">⌂</span><span class="rail-label">Start</span></button><button data-v="movies" title="Filme"><span class="nav-icon">▣</span><span class="rail-label">Filme</span></button><button data-v="series" title="Serien"><span class="nav-icon">▤</span><span class="rail-label">Serien</span></button><button data-v="mylist" title="Meine Liste"><span class="nav-icon">♥</span><span class="rail-label">Liste</span></button><button data-v="admin" title="Verwaltung"><span class="nav-icon">⚙</span><span class="rail-label">Admin</span></button></nav><div class="rail-bottom"><span class="side-server-dot"></span><span class="rail-server">${esc(state.system?.server_name||'BuddyFlix')}</span><span class="rail-version">v${esc(state.system?.version||'dev')}</span></div></aside><main class="main theater-main"><header class="top theater-top"><div class="top-search-wrap"><span class="top-search-icon">⌕</span><input id="search" class="search" placeholder="Filme, Serien, Folgen …"></div><div class="top-actions"><button class="profile-pill" id="profileMenu"><span class="profile-pill-avatar">${esc(p.avatar||'🍿')}</span><span class="profile-pill-copy"><b>${esc(p.name||'Profil')}</b><small>Profil wechseln</small></span><span class="profile-chevron">⌄</span></button><button class="btn ghost cinema-toggle" id="cinema" title="Kino-Fokus">◩ Kino</button><span class="status"><i class="dot"></i> Online</span><button class="btn ghost top-logout" id="logout">Abmelden</button></div></header><div id="content" class="content theater-content"></div></main></div>`;document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));$('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};$('#profileMenu').onclick=()=>showProfileSwitcher();$('#cinema').onclick=toggleCinemaMode;installSpatialNavigation();let timer;$('#search').oninput=e=>{clearTimeout(timer);timer=setTimeout(async()=>{stopHeroRotation();state.media=await api('/api/media?q='+encodeURIComponent(e.target.value));movieFilter='all';movieDecade='all';renderMovies()},180)}}
+function shell(){
+  const p=state.activeProfile||state.profiles[0]||{name:'Profil',avatar:'🍿'};
+  const title=esc(state.system?.server_name||'BuddyFlix');
+  const version=esc(state.system?.version||'dev');
+  document.querySelector('#app').innerHTML=`
+    <div class="shell theater-shell studio-shell">
+      <aside class="side side-rail studio-sidebar">
+        <div class="rail-logo studio-identity">
+          <img src="/assets/buddyflix-logo.png" alt="BuddyFlix">
+          <span>DEIN KINO. DEINE MEDIEN.</span>
+        </div>
+        <span class="studio-nav-caption">ENTDECKEN</span>
+        <nav class="nav rail-nav studio-nav" aria-label="Hauptnavigation">
+          <button data-v="home" class="active" aria-current="page"><span class="nav-icon">⌂</span><span class="rail-label">Startseite</span></button>
+          <button data-v="movies"><span class="nav-icon">▦</span><span class="rail-label">Filme</span></button>
+          <button data-v="series"><span class="nav-icon">▤</span><span class="rail-label">Serien</span></button>
+          <button data-v="mylist"><span class="nav-icon">♡</span><span class="rail-label">Meine Liste</span></button>
+          <button data-v="admin"><span class="nav-icon">⚙</span><span class="rail-label">Verwaltung</span></button>
+        </nav>
+        <div class="rail-bottom studio-server">
+          <span class="side-server-dot"></span>
+          <span class="rail-server">${title}</span>
+          <span class="rail-version">VERSION ${version}</span>
+        </div>
+      </aside>
+      <main class="main theater-main studio-main">
+        <header class="top theater-top studio-topbar">
+          <div class="studio-top-heading">
+            <span class="studio-top-overline">BUDDYFLIX / BIBLIOTHEK</span>
+            <strong id="studioViewTitle">Startseite</strong>
+          </div>
+          <div class="top-search-wrap studio-search">
+            <span class="top-search-icon">⌕</span>
+            <input id="search" class="search" aria-label="Filme suchen" placeholder="Filme durchsuchen …">
+          </div>
+          <div class="top-actions studio-actions">
+            <button class="profile-pill" id="profileMenu" title="Profil wechseln">
+              <span class="profile-pill-avatar">${esc(p.avatar||'🍿')}</span>
+              <span class="profile-pill-copy"><b>${esc(p.name||'Profil')}</b><small>Mein Profil</small></span>
+              <span class="profile-chevron">⌄</span>
+            </button>
+            <button class="btn ghost top-logout" id="logout" title="Abmelden">↪ <span>Abmelden</span></button>
+            <button class="btn ghost cinema-toggle" id="cinema" title="Kino-Fokus">◩</button>
+          </div>
+        </header>
+        <div id="content" class="content theater-content studio-content"></div>
+      </main>
+    </div>`;
+  document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>view(b.dataset.v,b));
+  $('#logout').onclick=async()=>{await api('/api/logout',{method:'POST'});loginView()};
+  $('#profileMenu').onclick=()=>showProfileSwitcher();
+  $('#cinema').onclick=toggleCinemaMode;
+  installSpatialNavigation();
+  let timer;
+  $('#search').oninput=e=>{
+    clearTimeout(timer);
+    timer=setTimeout(async()=>{
+      try{
+        stopHeroRotation();
+        const q=e.target.value;
+        state.media=await api('/api/media?q='+encodeURIComponent(q));
+        movieFilter='all'; movieDecade='all';
+        currentView='movies';
+        document.querySelectorAll('.nav button').forEach(b=>{
+          const active=b.dataset.v==='movies';
+          b.classList.toggle('active',active);
+          if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')
+        });
+        const heading=$('#studioViewTitle');if(heading)heading.textContent='Filme';
+        renderMovies()
+      }catch(err){toast('Suche fehlgeschlagen: '+err.message)}
+    },220)
+  }
+}
 async function boot(){try{const setup=await fetch('/api/setup/status').then(r=>r.json());if(!setup.setup_done){setupView(setup);return}state.system=await api('/api/system');let profileInfo=await api('/api/profiles');state.profiles=profileInfo.profiles||[];state.profileSelected=!!profileInfo.selected;state.activeProfile=state.profiles.find(p=>p.id===profileInfo.active_id)||state.profiles[0]||null;state.media=await api('/api/media');state.series=await api('/api/series');state.libs=await api('/api/libraries');shell();renderHome();if(state.profiles.length>1&&!state.profileSelected)setTimeout(()=>showProfileSwitcher(),80)}catch(e){if(e.message!=='unauthorized')loginView()}}
-async function view(v,b){currentView=v;document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));if(v!=='home')stopHeroRotation();try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='series')renderSeries();if(v==='mylist')renderMyList();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
+async function view(v,b){currentView=v;document.querySelectorAll('.nav button').forEach(x=>{const active=x===b;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});const viewTitle=$('#studioViewTitle');if(viewTitle)viewTitle.textContent=({home:'Startseite',movies:'Filme',series:'Serien',mylist:'Meine Liste',admin:'Verwaltung'})[v]||'BuddyFlix';if(v!=='home')stopHeroRotation();try{if(v==='home')renderHome();if(v==='movies')renderMovies();if(v==='series')renderSeries();if(v==='mylist')renderMyList();if(v==='admin')await renderAdmin()}catch(e){const box=$('#content');if(box)box.innerHTML='<section class="panel"><h2>Verwaltung konnte nicht geladen werden</h2><p class="muted">'+esc(e.message||'Unbekannter Fehler')+'</p><button class="btn primary" onclick="location.reload()">Neu laden</button></section>';toast('Fehler beim Laden der Verwaltung')}}
 function profileByID(id){return state.profiles.find(p=>p.id===id)}
 function avatarChoices(){return ['🍿','🎬','😎','🚀','🦊','🐼','🤠','👾','🛸','🔥','⭐','🎧']}
 async function reloadProfiles(){
@@ -164,65 +237,63 @@ function renderMyList(){
 function pickSomething(){let pool=movieMedia().filter(m=>!m.missing);if(!pool.length){toast('Noch keine Filme vorhanden');return}let unseen=pool.filter(m=>mediaProgress(m)<1),choices=unseen.length?unseen:pool,m=choices[Math.floor(Math.random()*choices.length)];detail(m.id)}
 
 function renderHome(){
-  let movies=movieMedia();
-  let continueItems=activeContinueItems();
-  let newest=movies.slice(0,18);
-  let unseen=movies.filter(m=>mediaProgress(m)<1).slice(0,14);
-  let classics=movies.filter(m=>m.year&&m.year<2000).slice(0,14);
-  let modern=movies.filter(m=>m.year>=2010).slice(0,14);
-  let favorites=movies.filter(m=>m.favorite).slice(0,14);
-  let history=historyItems().filter(m=>m.kind!=='episode').slice(0,14);
-  let seriesContinue=state.series
-    .filter(x=>x.next_episode&&mediaProgress(x.next_episode)<1&&x.watched_count>0)
-    .slice()
-    .sort((a,b)=>String(b.last_activity||'').localeCompare(String(a.last_activity||'')))
-    .slice(0,8);
-  let heroes=heroCandidates();
+  stopHeroRotation();
+  const movies=movieMedia();
+  const continuing=activeContinueItems();
+  const newest=movies.slice(0,20);
+  const unseen=movies.filter(m=>mediaProgress(m)<1).slice(0,16);
+  const favorites=movies.filter(m=>m.favorite).slice(0,16);
+  const seriesContinue=state.series
+    .filter(x=>x.next_episode && (x.watched_count>0||x.continue_count>0))
+    .slice().sort((a,b)=>String(b.last_activity||'').localeCompare(String(a.last_activity||''))).slice(0,8);
+  const shows=state.series||[];
+  const heroes=heroCandidates();
   if(heroes.length&&heroIndex>=heroes.length)heroIndex=0;
-  let hero=heroes[heroIndex]||continueItems.find(m=>m.kind!=='episode'&&m.backdrop)||movies[0]||state.media[0];
-  let heroPct=hero?mediaProgress(hero):0,heroResume=hero&&hero.position>20&&hero.duration>0&&heroPct<95;
-  let watchedCount=movies.filter(m=>mediaProgress(m)>=95).length;
-  let spotlight=heroes.filter((_,i)=>i!==heroIndex).slice(0,3);
-  let showcase=[...movies.filter(m=>m.backdrop&&m.id!==hero?.id)].slice(0,3);
+  const hero=heroes[heroIndex]||continuing.find(m=>m.kind!=='episode')||movies[0]||state.media[0];
+  const heroPct=hero?mediaProgress(hero):0;
+  const resume=!!hero&&hero.position>20&&hero.duration>0&&heroPct<95;
+  const watched=movies.filter(m=>mediaProgress(m)>=95).length;
+  const mediaCount=movies.length+shows.reduce((total,s)=>total+(s.episode_count||0),0);
   $('#content').innerHTML=`
-    ${hero?`<section class="immersive-hero" onmouseenter="stopHeroRotation()" onmouseleave="scheduleHeroRotation()">
-      <div class="immersive-bg" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div>
-      <div class="immersive-fade"></div>
-      <div class="immersive-grain"></div>
-      <div class="hero-nav hero-nav-left"><button onclick="shiftHero(-1)" aria-label="Vorheriger Film">‹</button></div>
-      <div class="hero-nav hero-nav-right"><button onclick="shiftHero(1)" aria-label="Nächster Film">›</button></div>
-      <div class="immersive-copy">
-        <div class="immersive-eyebrow"><span>BUDDYFLIX ORIGINAL PICK</span><b>${hero.year||'Film'}</b></div>
-        <h1>${esc(hero.title)}</h1>
-        <p>${esc(hero.overview||'Deine eigene Filmbibliothek. Direkt vom NAS, ohne Umwege und ohne Ballast.')}</p>
-        <div class="immersive-actions">
-          <button class="btn primary mega-play" onclick="play(${hero.id},'${heroResume?'resume':'start'}')">▶ ${heroResume?'Fortsetzen':'Jetzt ansehen'}</button>
-          <button class="round-action" onclick="detail(${hero.id})" title="Details">ⓘ</button>
-          <button class="round-action ${hero.favorite?'favorite-active':''}" onclick="toggleFavorite(${hero.id},${!hero.favorite})" title="${hero.favorite?'Aus meiner Liste':'Zu meiner Liste'}">${hero.favorite?'♥':'♡'}</button>
-          <button class="round-action" onclick="pickSomething()" title="Überrasch mich">⤨</button>
-        </div>
-        ${heroResume?`<div class="immersive-progress"><div><span>Weiter bei ${fmtTime(hero.position)}</span><b>${Math.round(heroPct)}%</b></div><i><em style="width:${heroPct}%"></em></i></div>`:''}
-        <div class="hero-dots">${heroes.map((_,i)=>`<button class="${i===heroIndex?'active':''}" onclick="setHero(${i})" aria-label="Spotlight ${i+1}"></button>`).join('')}</div>
+    <div class="studio-home">
+      <div class="studio-intro">
+        <div><span class="studio-kicker">DEINE PRIVATE MEDIATHEK</span><h1>Dein Kino. <em>Ganz persönlich.</em></h1>
+          <p>Entdecke deine Filme und Serien – direkt von deinem Server.</p></div>
+        <div class="studio-library-stamp"><span class="side-server-dot"></span><span>Bibliothek bereit</span></div>
       </div>
-      <div class="hero-stack"><div class="hero-stack-label">ALS NÄCHSTES</div>${spotlight.map(m=>miniPoster(m,heroes.indexOf(m))).join('')}</div>
-      <div class="immersive-stats"><span><b>${movies.length}</b><small>Filme</small></span><span><b>${watchedCount}</b><small>gesehen</small></span><span><b>${continueItems.length}</b><small>offen</small></span></div>
-    </section>`:''}
-    <div class="shelf-zone">
-      ${featureStrip(showcase)}
-      ${continueSection(continueItems)}
-      ${seriesHomeSection(seriesContinue)}
-      ${homeSection('Meine Liste',favorites,'VON DIR GEMERKT')}
-      ${homeSection('Zuletzt angesehen',history,'DEINE LETZTEN FILMABENDE')}
-      ${homeSection('Frisch eingetroffen',newest,'NEU IN DEINER SAMMLUNG')}
-      ${homeSection('Klassiker',classics,'VOR 2000')}
-      ${homeSection('Moderne Favoriten',modern,'AB 2010')}
-      ${homeSection('Noch ungesehen',unseen,'NOCH NICHT ENTDECKT')}
-    </div>
-    ${!movies.length&&!state.series.length?'<div class="empty home-empty">Noch keine Medien. Lege unter Verwaltung eine Bibliothek an.</div>':''}
-  `;
-  scheduleHeroRotation()
+      ${hero?`<section class="studio-spotlight" aria-label="Film im Fokus">
+        <div class="studio-spotlight-art" style="background-image:url('${esc(hero.backdrop||hero.poster||'')}')"></div>
+        <div class="studio-spotlight-shade"></div>
+        <div class="studio-spotlight-body">
+          <span class="studio-kicker">${resume?'WEITERSCHAUEN':'IM SPOTLIGHT'}</span>
+          <h2>${esc(hero.title)}</h2>
+          <div class="studio-spotlight-meta"><span>${esc(hero.year||'Aus deiner Sammlung')}</span>${hero.runtime?'<span>· '+esc(hero.runtime)+' Min.</span>':''}<span>· ${resume?'Angefangen':'Abspielbereit'}</span></div>
+          <p>${esc(hero.overview||'Einer deiner Titel aus der BuddyFlix-Bibliothek – bereit für den nächsten Filmabend.')}</p>
+          <div class="studio-spotlight-actions">
+            <button class="btn primary studio-watch" onclick="play(${hero.id},'${resume?'resume':'start'}')">▶ ${resume?'Fortsetzen':'Film abspielen'}</button>
+            <button class="btn ghost" onclick="detail(${hero.id})">Details ansehen ↗</button>
+            <button class="studio-fav" onclick="toggleFavorite(${hero.id},${!hero.favorite})" aria-label="${hero.favorite?'Aus Liste entfernen':'Zu meiner Liste'}">${hero.favorite?'♥':'♡'}</button>
+          </div>
+          ${resume?`<div class="studio-resume">Fortschritt · ${Math.round(heroPct)}%<div class="studio-track"><i style="width:${heroPct}%"></i></div></div>`:''}
+        </div>
+        ${heroes.length>1?`<div class="studio-spotlight-controls"><button onclick="shiftHero(-1)" aria-label="Voriger Titel">←</button><span>${heroIndex+1} / ${heroes.length}</span><button onclick="shiftHero(1)" aria-label="Nächster Titel">→</button></div>`:''}
+      </section>`:''}
+      <section class="studio-metrics" aria-label="Deine Bibliothek in Zahlen">
+        <div><small>FILME</small><b>${movies.length}</b><span>in deiner Sammlung</span></div>
+        <div><small>SERIEN</small><b>${shows.length}</b><span>Serienwelten</span></div>
+        <div><small>MEDIEN</small><b>${mediaCount}</b><span>Filme und Episoden</span></div>
+        <div><small>ANGEFANGEN</small><b>${continuing.length}</b><span>zum Weiterschauen</span></div>
+      </section>
+      <div class="studio-shelves">
+        ${continueSection(continuing)}
+        ${seriesHomeSection(seriesContinue)}
+        ${homeSection('Neu hinzugefügt',newest,'FRISCH IN DEINER BIBLIOTHEK')}
+        ${homeSection('Meine Liste',favorites,'FÜR SPÄTER GEMERKT')}
+        ${homeSection('Noch ungesehen',unseen,'BEREIT ZUM ENTDECKEN')}
+      </div>
+      ${!movies.length&&!shows.length?'<div class="empty home-empty">Hier ist noch Platz für deine Filme. Lege unter Verwaltung eine Bibliothek an.</div>':''}
+    </div>`;
 }
-
 function filteredMovies(){
   let items=movieMedia().slice();
   if(movieFilter==='unseen')items=items.filter(m=>mediaProgress(m)<1);
@@ -402,7 +473,7 @@ async function renderAdmin(){
   let tvdbSource=cfg.tvdb_credential_source||'missing';
   let tvdbStatus=tvdbSource==='builtin'?'BuddyFlix-TheTVDB-Zugang aktiv':tvdbSource==='override'?'Eigener TheTVDB-Override aktiv':tvdbSource==='environment'?'TheTVDB-Zugang über Server-Umgebung aktiv':'TheTVDB-Projektzugang fehlt in diesem Build';
   $('#content').innerHTML=`
-  <div class="rowhead"><div><h2>Verwaltung</h2><div class="muted">Server, Bibliotheken und Zugriff verwalten</div></div><div class="toolbar"><button class="btn primary" id="scan">Bibliotheken scannen</button></div></div>
+  <div class="studio-admin-heading"><div><span class="studio-kicker">SYSTEM & MEDIEN</span><h1>Verwaltung</h1><p>Server, Bibliotheken, Metadaten und Zugänge – alles an einem Ort.</p></div><div class="toolbar"><button class="btn primary" id="scan">↻ Bibliotheken scannen</button></div></div>
   <div class="stats">
     <div class="stat"><b>${s.media}</b><span>Vorhandene Medien</span></div>
     <div class="stat"><b>${s.missing_media||0}</b><span>Fehlende Einträge</span></div>
