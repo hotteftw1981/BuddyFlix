@@ -102,6 +102,24 @@ Neue Einstiegspunkte: `web/index.html`, `web/buddyflix-next.js`, `web/buddyflix-
 
 ---
 
+## 🍿 Jellyfin-NFO-Übernahme
+
+**BuddyFlix Next → Verwaltung → Metadaten → NFO-Dateien prüfen**.
+
+Wenn Jellyfin und BuddyFlix dieselben Medienordner verwenden, kann Jellyfin mit dem **Nfo saver** Metadaten neben den Videos ablegen. Beide Server müssen dafür nicht gleichzeitig laufen.
+
+1. BuddyFlix stoppen, Jellyfin starten und für die Film-Bibliothek den NFO-Metadatenspeicher aktivieren.
+2. Metadaten aktualisieren und prüfen, dass `Filmname.nfo` oder `movie.nfo` existiert.
+3. Jellyfin stoppen, BuddyFlix starten, NFO-Vorschau prüfen und Import bestätigen.
+
+Bei einem bestätigten Import werden nur Titel mit **passender, gültiger NFO** neu zugeordnet. Die bisherige BuddyFlix-Metadatenzuordnung wird für diese Medien ersetzt und als Quelle `jellyfin-nfo` vermerkt. Unterstützt werden IMDb-/TMDb-/TheTVDB-IDs sowie Titel, Jahr, Inhaltsangabe, lokale/öffentliche Bilder, Genres, Darsteller, Regie, Studios, Laufzeit und weitere typische NFO-Felder.
+
+**Keine Dateien werden gelöscht.** Media-ID, Dateipfad, Profile, Favoriten und Wiedergabefortschritt bleiben erhalten. Medien ohne gültige NFO bleiben unverändert. In Ordnern mit mehreren Videodateien wird ein allgemeines `movie.nfo` absichtlich nicht automatisch zugeordnet.
+
+Der Import arbeitet lokal, benötigt keine gleichzeitige Jellyfin-Verbindung und ändert die Quell-NFOs nicht.
+
+---
+
 ## 🖥️ Weboberfläche
 
 Der Webclient befindet sich ebenfalls aktiv in Entwicklung und enthält unter anderem:

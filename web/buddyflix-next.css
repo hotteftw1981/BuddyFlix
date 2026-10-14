@@ -423,3 +423,25 @@ img{max-width:100%;display:block}
  .dialog{padding:24px}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+
+/* NFO handover — prominent import and preview inside the new Metadata workspace. */
+.nfo-import-panel{margin-top:18px;background:linear-gradient(118deg,#20282a,#181d22 70%);border-color:#51655b}
+.nfo-import-top{display:flex;align-items:center;justify-content:space-between;gap:22px}
+.nfo-import-top>div:first-child{max-width:720px}
+.nfo-import-top h2{font-size:27px;margin:10px 0}
+.nfo-import-top p{font-size:12px;line-height:1.75;color:#b3bec7}
+.nfo-import-top .panel-buttons{margin:0;flex-shrink:0}
+.nfo-numbers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:24px}
+.nfo-numbers>div{background:#121b1bcc;border:1px solid #3c4b47;border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:4px}
+.nfo-numbers b{font-size:27px;font-weight:800;letter-spacing:-.045em}
+.nfo-numbers span{font-size:10px;color:#a5b4aa}
+.nfo-examples{margin-top:20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.nfo-examples>div{min-width:0;border:1px solid #36423f;border-radius:9px;padding:10px 12px;background:#18201e;display:grid;gap:4px}
+.nfo-examples strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nfo-examples span{font-size:10px;color:#b1c6b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nfo-hint{font-size:11px;color:#9eafa4;margin:16px 0 0}
+.nfo-problems{margin-top:15px;border:1px solid #785c43;padding:12px;border-radius:10px;color:#dfcaaa;font-size:11px}
+.nfo-problems p{overflow-wrap:anywhere}
+@media(max-width:1000px){.nfo-import-top{flex-direction:column;align-items:flex-start}.nfo-numbers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.nfo-examples{grid-template-columns:1fr}.nfo-import-panel{padding:18px}}

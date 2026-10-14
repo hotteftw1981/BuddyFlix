@@ -230,7 +230,7 @@ function admin(){
    '<div class="row-buttons">'+btn("Bearbeiten","libraryEdit","",'data-id="'+l.id+'"')+btn("Entfernen","libraryDelete","danger",'data-id="'+l.id+'"')+'</div></article>').join("")+'</div>':
    '<div class="empty-state">Noch keine Bibliotheken angelegt.</div>')+
    '<div class="panel-buttons">'+btn("↻ Alle Bibliotheken scannen","scan","primary")+'</div></div>';
- if(t==="metadata")body='<div class="workspace-panels"><section class="workspace-panel"><div class="eyebrow">IDENTIFIZIERUNG</div><h2>Metadaten-Zentrale</h2>'+
+ if(t==="metadata"){body='<div class="workspace-panels"><section class="workspace-panel"><div class="eyebrow">IDENTIFIZIERUNG</div><h2>Metadaten-Zentrale</h2>'+
   '<p>Automatische Suche für Filme ohne Bilder und Beschreibung. Unsichere Vorschläge landen zur manuellen Prüfung.</p>'+
   '<div class="provider-pills">'+state.providers.map(p=>'<span class="provider-pill">'+E(p.name||"Provider")+' · '+(p.configured?"bereit":"nicht eingerichtet")+'</span>').join("")+'</div>'+
   btn("Metadatenlauf starten","bulkMeta","primary")+
@@ -239,7 +239,7 @@ function admin(){
   '<div class="task-line"><b>'+num(reviews.length)+'</b><span>Treffer zur Prüfung</span></div>'+
   '<div class="task-line"><b>'+num(incomplete.length)+'</b><span>Medien ohne vollständige Metadaten</span></div>'+
   btn("Zur Medienpflege","gotoAdmin","",'data-tab="medien"')+
-  '<p class="attribution">Metadata provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>.</p></section></div>';
+  '<p class="attribution">Metadata provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>.</p></section></div>';body+=nfoPanel();}
  if(t==="medien")body='<div class="workspace-panel"><div class="panel-heading"><div><h2>Medienpflege</h2><p>Metadaten zuordnen, Titel bearbeiten und verwaiste Einträge kontrollieren.</p></div>'+
    '<div class="row-buttons">'+btn("Fehlende bereinigen","cleanup","danger")+'</div></div>'+
    '<div class="data-toolbar"><label>Anzeige <select id="adminFilter"><option value="review">Bitte prüfen</option><option value="incomplete">Ohne Metadaten</option><option value="missing">Fehlende Datei</option><option value="all">Alle Medien</option></select></label>'+
@@ -283,6 +283,29 @@ function adminMediaList(filter){
  btn("Suchen","identify","",'data-id="'+m.id+'"')+btn("Bearbeiten","editMedia","",'data-id="'+m.id+'"')+'</div></div>').join("")+'</div>':
  '<div class="empty-state">Keine passenden Medien. Hier ist alles erledigt.</div>';
 }
+
+function nfoPanel(){
+ const p=state.nfoPreview;
+ const summary=p?'<div class="nfo-numbers">'+
+   '<div><b>'+num(p.found)+'</b><span>NFO gefunden</span></div>'+
+   '<div><b>'+num(p.missing)+'</b><span>Ohne NFO · bleiben unverändert</span></div>'+
+   '<div><b>'+num(p.invalid)+'</b><span>Ungültig · bleiben unverändert</span></div>'+
+   '<div><b>'+num(p.without_ids)+'</b><span>NFO ohne IDs</span></div></div>':"";
+ const samples=p&&p.examples?.length?'<div class="nfo-examples">'+p.examples.slice(0,8).map(item=>
+   '<div><strong>'+E(item.title||item.path.split("/").pop())+'</strong><span>'+
+   E(Object.entries(item.external_ids||{}).map(([kind,id])=>kind.toUpperCase()+": "+id).join(" · ")||"Ohne externe ID")+
+   '</span></div>').join("")+'</div>':"";
+ return '<section class="workspace-panel nfo-import-panel"><div class="nfo-import-top">'+
+  '<div><div class="eyebrow">JELLYFIN → BUDDYFLIX</div><h2>Erkannte Filme übernehmen</h2>'+
+  '<p>Jellyfin hat deine Filme bereits zugeordnet? BuddyFlix liest die NFO-Dateien direkt aus denselben Filmordnern. '+
+  'Nur bei gültiger NFO werden die bisherigen BuddyFlix-Metadaten und IDs ersetzt. Filme, Profile, Merkliste und Wiedergabefortschritt bleiben erhalten.</p></div>'+
+  '<div class="panel-buttons">'+btn("NFO-Dateien prüfen","nfoPreview","primary")+
+  (p&&p.found>0?btn("Alle "+num(p.found)+" NFOs übernehmen","nfoApply","",'data-count="'+p.found+'"'):"")+'</div></div>'+
+  (p?summary+samples+(p.problems?.length?'<details class="nfo-problems"><summary>Probleme anzeigen</summary>'+
+   p.problems.map(x=>'<p>'+E(x)+'</p>').join("")+'</details>':""):"<p class=\"nfo-hint\">Erst auf „NFO-Dateien prüfen“ klicken. Das verändert noch nichts.</p>")+
+  '<p class="nfo-hint">Unterstützt Filmname.nfo und movie.nfo (bei genau einem Film im Ordner). Vorhandene NFO-Dateien werden niemals verändert.</p></section>';
+}
+
 function jobMarkup(){
  const j=state.job;
  if(!j)return '<p class="muted">Noch kein Metadatenlauf gestartet.</p>';
@@ -444,6 +467,17 @@ async function handleAction(btn){
  case "favorite":{const m=mById(id);await doMediaAction(id,m?.favorite?"unfavorite":"favorite");break}
  case "watch":{const m=mById(id);await doMediaAction(id,watched(m)?"mark_unwatched":"mark_watched");break}
  case "scan":{const x=await api("/api/scan",{method:"POST"});toast(num(x.files_seen)+" Dateien gefunden","success");await refresh();break}
+ case "nfoPreview":state.nfoPreview=await api("/api/nfo/import");render();break;
+ case "nfoApply":{const p=state.nfoPreview;
+  if(!p||p.found<1){toast("Erst NFO-Dateien prüfen","error");break}
+  confirmBox("Jellyfin-NFOs jetzt übernehmen?",
+   p.found+" Filme/Episoden mit gültiger NFO werden auf die Jellyfin-Daten zurückgesetzt. "+
+   p.missing+" ohne NFO und "+p.invalid+" ungültige Einträge bleiben unverändert. "+
+   "Vorhandene Profile, Fortschritte und Videodateien werden nicht verändert.",
+   async()=>{const result=await api("/api/nfo/import",{method:"POST",body:data({confirm:true})});
+    await refresh({renderNow:false});state.nfoPreview=await api("/api/nfo/import");
+    render();toast(result.applied+" NFO-Zuordnungen übernommen","success")}, "Jetzt übernehmen");
+  break}
  case "bulkMeta":{state.job=await api("/api/metadata/bulk",{method:"POST"});toast("Metadatenlauf gestartet","success");render();pollJob();break}
  case "cleanup":confirmBox("Fehlende Einträge bereinigen?","Die Medien werden nur aus dem Index entfernt, nicht vom NAS.",async()=>{
    await api("/api/media/cleanup",{method:"POST"});await refresh();toast("Bereinigung abgeschlossen","success")},"Bereinigen");break;

@@ -76,6 +76,19 @@ type Media struct {
 	Poster             string            `json:"poster"`
 	Backdrop           string            `json:"backdrop"`
 	Runtime            int               `json:"runtime"`
+	OriginalTitle      string            `json:"original_title,omitempty"`
+	SortTitle          string            `json:"sort_title,omitempty"`
+	Tagline            string            `json:"tagline,omitempty"`
+	Premiered          string            `json:"premiered,omitempty"`
+	Rating             string            `json:"rating,omitempty"`
+	ContentRating      string            `json:"content_rating,omitempty"`
+	Genres             []string          `json:"genres,omitempty"`
+	Tags               []string          `json:"tags,omitempty"`
+	Studios            []string          `json:"studios,omitempty"`
+	Directors          []string          `json:"directors,omitempty"`
+	Writers            []string          `json:"writers,omitempty"`
+	Actors             []string          `json:"actors,omitempty"`
+	Countries          []string          `json:"countries,omitempty"`
 	Added              string            `json:"added"`
 	MTime              int64             `json:"mtime"`
 	Size               int64             `json:"size"`
@@ -300,6 +313,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/metadata/search", s.auth(s.metadataSearch))
 	s.mux.HandleFunc("/api/metadata/apply", s.auth(s.metadataApply))
 	s.mux.HandleFunc("/api/metadata/bulk", s.auth(s.metadataBulk))
+	s.mux.HandleFunc("/api/nfo/import", s.auth(s.nfoImport))
+	s.mux.HandleFunc("/api/nfo/art", s.auth(s.nfoArt))
 	s.mux.HandleFunc("/api/metadata/providers", s.auth(s.metadataProviders))
 	s.mux.HandleFunc("/api/metadata/", s.auth(s.metadata))
 	s.mux.HandleFunc("/stream/", s.auth(s.stream))
