@@ -398,3 +398,9 @@ In **Verwaltung → Metadaten** steht neben dem NFO-Import die Aktion **„Fehle
 Gefundene JPEG-/PNG-/WebP-Bilder landen mit 12-MiB-Größenlimit und URL-Allowlist persistent unter `BUDDYFLIX_DATA/nfo-art`. Im Browser werden sie über `/api/nfo/art` ausgeliefert. Die Ansicht zeigt Fortschritt, Poster-/Backdrop-Erfolge und offene Treffer. TheTVDB kann bei fehlender eigener Film-ID über eine exakte IMDb-ID die Film-ID ermitteln; bei konfiguriertem TMDb-Zugang funktioniert auch der TMDb-ID-/IMDb-ID-Pfad. Bereits gespeicherte Bilder bleiben bestehen. Ohne Netzwerkverbindung oder verfügbare Anbieter bleiben fehlende Bilder offen und können später erneut nachgeladen werden.
 
 **Die vorhandenen NFO-Dateien nicht vor der erfolgreichen Bildreparatur löschen.**
+
+## 🎞️ Posterwerkstatt (ab dev.126)
+
+In **Verwaltung → Medienpflege → Fehlende Poster** werden ausschließlich Filme ohne Poster aufgelistet. Die Zentrale zeigt deren Anzahl und verlinkt direkt auf die Aufgabenliste. Pro Film öffnet **Poster wählen** eine eigenständige Bildwerkstatt: passgenaue Vorschläge von konfigurierten TheTVDB-/TMDb-Anbietern per bereits gespeicherter Film-ID; HTTPS-Posteradresse; oder Datei-Upload (JPG, PNG, WebP, bis 12 MiB). Hochgeladene Dateien und heruntergeladene Anbieterbilder liegen dauerhaft in `BUDDYFLIX_DATA/nfo-art`. Beliebige manuelle HTTPS-Links werden **nicht** vom NAS heruntergeladen und benötigen weiterhin die Quelle.
+
+Bei einer Posterkorrektur bleiben IMDb-/TMDb-/TheTVDB-Zuordnung, Beschreibung, Filmtitel, Jahr, Profile und Wiedergabefortschritt unverändert. Die Posterwerkstatt verändert keine NFO-Dateien.

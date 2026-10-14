@@ -457,3 +457,22 @@ img{max-width:100%;display:block}
 .artwork-fix button{flex-shrink:0}
 #artworkStatus .job-box{margin-top:0}
 @media(max-width:750px){.artwork-fix{flex-direction:column;align-items:flex-start;gap:12px}}
+
+/* Film poster rescue, intentionally integrated into BuddyFlix Next administration. */
+.poster-task-lead{background:#222c29;border:1px solid #46584e;border-radius:12px;padding:14px 16px;font-size:12px;color:#bccac1;line-height:1.7;margin:14px 0}
+.poster-task-lead b{color:#e2efe5}
+.poster-picker-dialog{max-width:min(900px,94vw)}
+.poster-picker-layout{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:24px;margin-top:20px;align-items:start}
+.poster-picker-preview{aspect-ratio:2/3;border-radius:14px;background:#242a30;border:1px solid #3c4548;overflow:hidden;display:flex;justify-content:center;align-items:center}
+.poster-picker-preview .tile-image{width:100%;height:100%;object-fit:cover}
+.poster-picker-main{min-width:0}
+.poster-picker-main .eyebrow{margin:4px 0 12px}
+.poster-suggestion-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}
+.poster-suggestion{display:flex;flex-direction:column;background:#1c2427;border:1px solid #445450;border-radius:12px;overflow:hidden;cursor:pointer;text-align:left;padding:0;color:inherit}
+.poster-suggestion:hover{border-color:#96b7a0;transform:translateY(-2px)}
+.poster-suggestion-image{display:block;aspect-ratio:2/3;object-fit:cover;width:100%;background:#252e30}
+.poster-suggestion span{padding:9px;font-size:11px;font-weight:650}
+.poster-quick-form{margin-top:16px;padding-top:14px;border-top:1px solid #35413e}
+.poster-quick-form p{font-size:11px;margin:0;color:#aab6b0}
+.poster-quick-form input[type=file]{width:100%;max-width:100%;overflow:hidden}
+@media(max-width:670px){.poster-picker-layout{grid-template-columns:1fr}.poster-picker-preview{max-width:145px}.poster-picker-dialog{padding:18px}}

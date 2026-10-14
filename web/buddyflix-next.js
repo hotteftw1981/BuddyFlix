@@ -6,7 +6,7 @@ const state={
   page:"start",previous:"filme",adminTab:"overview",movieFilter:"all",movieSort:"new",
   query:"",seriesQuery:"",season:null,detail:null,show:null,
   media:[],shows:[],libraries:[],profiles:[],profile:null,system:null,settings:null,
-  providers:[],job:null,allMedia:[],loading:false,setup:false,authed:false
+  providers:[],job:null,allMedia:[],adminMediaFilter:"review",posterCandidates:[],loading:false,setup:false,authed:false
 };
 const E=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num=n=>Number(n||0).toLocaleString("de-DE");
@@ -20,6 +20,7 @@ const img=(src,cls,alt)=>src?'<img class="'+cls+'" src="'+E(src)+'" alt="'+E(alt
 const normalize=(x)=>String(x||"").toLocaleLowerCase("de");
 const isEpisode=m=>m?.kind==="episode";
 const movies=()=>state.media.filter(m=>!isEpisode(m));
+const missingPosters=()=>state.allMedia.filter(m=>!m.missing&&!isEpisode(m)&&m.kind!=="other"&&!m.poster);
 const watched=m=>pct(m)>=95;
 const inProgress=m=>pct(m)>1&&pct(m)<95;
 const continued=()=>state.media.filter(inProgress).sort((a,b)=>String(b.progress_updated||"").localeCompare(String(a.progress_updated||"")));
@@ -213,8 +214,10 @@ function admin(){
  const c=state.system||{},cfg=state.settings||{};
  const incomplete=state.allMedia.filter(m=>!m.missing&&(!m.poster||!m.overview));
  const reviews=state.allMedia.filter(m=>m.metadata_state==="review"&&m.pending_metadata);
+ const posterTasks=missingPosters();
  let body="";
  if(t==="overview")body='<div class="workspace-tiles">'+
+   '<button class="workspace-tile" data-action="showMissingPosters"><span>Fehlende Poster</span><b>'+num(posterTasks.length)+'</b><em>Gezielt korrigieren ↗</em></button>'+
    [['Bibliotheken',state.libraries.length,'libraries'],['Indizierte Medien',state.allMedia.length,'medien'],['Metadaten offen',incomplete.length,'metadata'],['Bitte prüfen',reviews.length,'metadata']].map(([title,v,to])=>
      '<button class="workspace-tile" data-admintab="'+to+'"><span>'+title+'</span><b>'+num(v)+'</b><em>Öffnen ↗</em></button>').join("")+
    '</div><div class="workspace-panels"><section class="workspace-panel"><span class="eyebrow">DEIN SERVER</span><h2>'+E(c.server_name||cfg.server_name||"BuddyFlix")+'</h2>'+
@@ -242,8 +245,11 @@ function admin(){
   '<p class="attribution">Metadata provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>.</p></section></div>';body+=nfoPanel();}
  if(t==="medien")body='<div class="workspace-panel"><div class="panel-heading"><div><h2>Medienpflege</h2><p>Metadaten zuordnen, Titel bearbeiten und verwaiste Einträge kontrollieren.</p></div>'+
    '<div class="row-buttons">'+btn("Fehlende bereinigen","cleanup","danger")+'</div></div>'+
-   '<div class="data-toolbar"><label>Anzeige <select id="adminFilter"><option value="review">Bitte prüfen</option><option value="incomplete">Ohne Metadaten</option><option value="missing">Fehlende Datei</option><option value="all">Alle Medien</option></select></label>'+
-   '<span>'+num(state.allMedia.length)+' Medien insgesamt</span></div><div id="adminMediaList">'+adminMediaList("review")+'</div></div>';
+   '<div class="data-toolbar"><label>Anzeige <select id="adminFilter">'+
+   [['poster','Fehlende Poster ('+num(posterTasks.length)+')'],['review','Bitte prüfen'],['incomplete','Ohne Metadaten'],['missing','Fehlende Datei'],['all','Alle Medien']].map(([v,t])=>'<option value="'+v+'"'+(state.adminMediaFilter===v?' selected':'')+'>'+t+'</option>').join("")+'</select></label>'+
+   '<span>'+num(state.allMedia.length)+' Medien insgesamt · '+num(posterTasks.length)+' ohne Poster</span></div>'+
+   (state.adminMediaFilter==='poster'?'<p class="poster-task-lead">Hier erscheinen ausschließlich Filme ohne Poster. Mit <b>Poster wählen</b> suchst du gezielt anhand der gespeicherten IDs, verwendest eine HTTPS-Bildadresse oder lädst eine Datei direkt vom Computer hoch. Filmzuordnungen bleiben unverändert.</p>':'')+
+   '<div id="adminMediaList">'+adminMediaList(state.adminMediaFilter)+'</div></div>';
  if(t==="profiles")body='<div class="workspace-panel"><div class="panel-heading"><div><h2>Profile verwalten</h2><p>Fortschritt und Merkliste sind je Profil getrennt.</p></div>'+
     btn("＋ Neues Profil","profileNew","primary")+'</div><div class="profile-work-grid">'+state.profiles.map(p=>
     '<div class="profile-work-card"><span>'+E(p.avatar||"🎬")+'</span><strong>'+E(p.name)+'</strong><div>'+
@@ -274,13 +280,16 @@ function admin(){
  nav+'<div class="workspace-body">'+body+'</div></div>';
 }
 function adminMediaList(filter){
- const items=state.allMedia.filter(m=>filter==="review"?m.metadata_state==="review"&&m.pending_metadata:
-   filter==="incomplete"?!m.poster||!m.overview:
+ const items=state.allMedia.filter(m=>filter==="poster"?!m.missing&&!isEpisode(m)&&m.kind!=="other"&&!m.poster:
+   filter==="review"?m.metadata_state==="review"&&m.pending_metadata:
+   filter==="incomplete"?!m.missing&&(!m.poster||!m.overview):
    filter==="missing"?m.missing:true).slice(0,180);
  return items.length?'<div class="admin-media-rows">'+items.map(m=>'<div class="admin-media-row">'+img(m.poster,"admin-thumb",m.title)+
  '<div class="admin-media-title"><b>'+E(m.title)+'</b><span>'+E(m.metadata_state||"Ohne Zuordnung")+' · '+E(m.path||"")+'</span></div>'+
- '<div class="row-buttons">'+(m.pending_metadata?btn("Vorschlag übernehmen","applyPending","primary",'data-id="'+m.id+'"'):"")+
- btn("Suchen","identify","",'data-id="'+m.id+'"')+btn("Bearbeiten","editMedia","",'data-id="'+m.id+'"')+'</div></div>').join("")+'</div>':
+ '<div class="row-buttons">'+(filter==="poster"?btn("Poster wählen","posterPicker","primary",'data-id="'+m.id+'"'):
+ (m.pending_metadata?btn("Vorschlag übernehmen","applyPending","primary",'data-id="'+m.id+'"'):"")+
+ btn("Suchen","identify","",'data-id="'+m.id+'"'))+
+ btn("Bearbeiten","editMedia","",'data-id="'+m.id+'"')+'</div></div>').join("")+'</div>':
  '<div class="empty-state">Keine passenden Medien. Hier ist alles erledigt.</div>';
 }
 
@@ -376,6 +385,37 @@ function libraryEditor(l){
  '<label>Ordner auf dem NAS<input name="path" required value="'+E(l?.path||"")+'" placeholder="/share/Multimedia/Filme"></label>'+
  '<p>Der Pfad muss auf dem QNAP bereits existieren.</p>'+
  '<div class="dialog-actions"><button type="button" class="button" data-action="close">Abbrechen</button><button class="button primary">Speichern</button></div></form>');
+}
+async function posterPicker(m){
+ if(!m)return;
+ state.posterCandidates=[];
+ modal('<div class="eyebrow">POSTERWERKSTATT</div><h2>'+E(m.title)+'</h2>'+
+  '<p>Wir ändern hier nur das Poster – niemals deine Filmzuordnung, IDs oder Beschreibung.</p>'+
+  '<div class="poster-picker-layout"><div class="poster-picker-preview">'+img(m.poster,"tile-image",m.title)+'</div>'+
+  '<div class="poster-picker-main">'+
+  '<div class="eyebrow">MOTIVE AUS DEINEN FILM-IDS</div>'+
+  '<div id="posterSuggestions"><p class="muted">Suche bei den verfügbaren Metadatenanbietern …</p></div>'+
+  '<form id="posterURLForm" class="stack-form poster-quick-form" data-id="'+m.id+'">'+
+  '<label>Eigene Bildadresse (HTTPS)<input type="url" name="url" required placeholder="https://example.com/poster.jpg"></label>'+
+  '<button class="button primary">Bildadresse verwenden</button>'+
+  '<p class="muted">Bilder von TMDb oder TheTVDB werden lokal gespeichert. Andere HTTPS-Bildadressen bleiben externe Links.</p></form>'+
+  '<form id="posterUploadForm" class="stack-form poster-quick-form" data-id="'+m.id+'">'+
+  '<label>Oder eigene Bilddatei hochladen<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required></label>'+
+  '<button class="button primary">Bilddatei speichern</button>'+
+  '<p class="muted">JPG, PNG oder WebP bis 12 MB · dauerhaft im BuddyFlix-Datenordner.</p></form>'+
+  '</div></div>',"wide-dialog poster-picker-dialog");
+ const host=q("#posterSuggestions");
+ try{
+  const result=await api("/api/artwork/suggestions?id="+m.id);
+  const options=(result.items||[]).filter(x=>x.kind==="poster");
+  state.posterCandidates=options;
+  if(host&&host.isConnected){
+   host.innerHTML=options.length?'<div class="poster-suggestion-grid">'+options.map((x,i)=>
+    '<button type="button" class="poster-suggestion" data-action="posterChoose" data-id="'+m.id+'" data-index="'+i+'">'+
+    img(x.url,"poster-suggestion-image",m.title)+'<span>'+E(x.provider)+' · Übernehmen</span></button>').join("")+'</div>':
+    '<p class="muted">Kein passender Postervorschlag gefunden. Du kannst eine eigene Bildadresse oder Bilddatei verwenden.</p>';
+  }
+ }catch(err){if(host&&host.isConnected)host.innerHTML='<p class="muted">Vorschlagsuche nicht verfügbar: '+E(errorMessage(err))+'. Du kannst trotzdem ein eigenes Bild verwenden.</p>'}
 }
 function mediaEditor(m){
  modal('<div class="eyebrow">MEDIENEDITOR</div><h2>'+E(m.title)+'</h2>'+
@@ -486,6 +526,12 @@ async function handleAction(btn){
  case "play":{const m=mById(id);if(m)openPlayer(m,btn.dataset.mode||"start");else toast("Film nicht gefunden","error");break}
  case "favorite":{const m=mById(id);await doMediaAction(id,m?.favorite?"unfavorite":"favorite");break}
  case "watch":{const m=mById(id);await doMediaAction(id,watched(m)?"mark_unwatched":"mark_watched");break}
+ case "showMissingPosters":state.adminMediaFilter="poster";state.adminTab="medien";route("admin");break;
+ case "posterPicker":await posterPicker(mById(id));break;
+ case "posterChoose":{const item=state.posterCandidates[Number(btn.dataset.index)];
+  if(!item||!id)break;
+  await api("/api/artwork/manual",{method:"POST",body:data({id,kind:"poster",url:item.url})});
+  closeModal();await refresh();toast("Poster dauerhaft übernommen","success");break}
  case "scan":{const x=await api("/api/scan",{method:"POST"});toast(num(x.files_seen)+" Dateien gefunden","success");await refresh();break}
  case "artworkRepair":{state.artworkJob=await api("/api/nfo/artwork/repair",{method:"POST"});
   render();if(state.artworkJob.running){toast("Bilderreparatur läuft im Hintergrund","success");pollArtworkJob()}
@@ -559,7 +605,7 @@ document.addEventListener("keydown",e=>{
 });
 document.addEventListener("change",e=>{
  if(e.target.id==="movieSort"){state.movieSort=e.target.value;render()}
- if(e.target.id==="adminFilter")q("#adminMediaList").innerHTML=adminMediaList(e.target.value)
+ if(e.target.id==="adminFilter"){state.adminMediaFilter=e.target.value;render()}
 });
 document.addEventListener("input",e=>{
  if(e.target.id==="globalSearch"){state.query=e.target.value;
@@ -589,6 +635,18 @@ document.addEventListener("submit",async e=>{
  case "mediaForm":await send("/api/media?id="+Number(form.dataset.id),"PUT",{title:val("title"),year:Number(val("year"))||0,
   overview:val("overview"),poster:val("poster"),backdrop:val("backdrop")});
   closeModal();await refresh();toast("Titel gespeichert","success");break;
+ case "posterURLForm":{const id=Number(form.dataset.id);
+  const result=await send("/api/artwork/manual","POST",{id,kind:"poster",url:val("url")});
+  closeModal();await refresh();toast(result.stored_locally?"Poster dauerhaft gespeichert":"Poster-Adresse gespeichert","success");break}
+ case "posterUploadForm":{const id=Number(form.dataset.id);
+  const file=form.elements.namedItem("image")?.files?.[0];
+  if(!file)throw Error("Bitte eine Bilddatei auswählen");
+  if(file.size>12*1024*1024)throw Error("Bilddatei darf maximal 12 MB groß sein");
+  const body=new FormData();body.append("image",file);
+  const res=await fetch("/api/artwork/upload?id="+id+"&kind=poster",{method:"POST",credentials:"same-origin",body});
+  let result={};try{result=await res.json()}catch{}
+  if(!res.ok)throw Error(result.error||"Hochladen fehlgeschlagen");
+  closeModal();await refresh();toast("Poster dauerhaft gespeichert","success");break}
  case "lookupForm":await showSearchResults(form);break;
  case "serverForm":await send("/api/settings","PUT",{server_name:val("server_name"),admin_user:val("admin_user")});
   await refresh();toast("Einstellungen gespeichert","success");break;
