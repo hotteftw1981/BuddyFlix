@@ -85,6 +85,7 @@ type nfoPreview struct {
     Problems []string `json:"problems"`
     Applied int `json:"applied,omitempty"`
     Failed int `json:"failed,omitempty"`
+    ImagesCached int `json:"images_cached,omitempty"`
 }
 var imdbPattern = regexp.MustCompile(`^tt[0-9]{6,12}$`)
 var numericID = regexp.MustCompile(`^[0-9]{1,20}$`)
@@ -276,6 +277,56 @@ func importedNFO(m Media,h nfoHit) Media {
     return m
 }
 
+// Art is copied to BuddyFlix's own persistent data folder before committing the
+// metadata. The copied images continue working if all Jellyfin NFOs and artwork
+// are subsequently removed from the movie directory.
+func (s *Server) cacheNFOArt(m Media, n jellyfinNFO, kind string) (string, bool, error) {
+    src,local:=nfoImagePath(m,n,kind)
+    if !local {
+        return nfoArtURL(m,n,kind),false,nil
+    }
+    dir:=filepath.Join(s.cfg.DataDir,"nfo-art")
+    if err:=os.MkdirAll(dir,0700);err!=nil {return "",false,err}
+    ext:=strings.ToLower(filepath.Ext(src))
+    name:=strconv.FormatInt(m.ID,10)+"-"+kind
+    final:=filepath.Join(dir,name+ext)
+    in,err:=os.Open(src);if err!=nil{return "",false,err}
+    defer in.Close()
+    // The file may change between preview and import. Never cache anything
+    // except a regular image within the configured maximum size.
+    stat,err:=in.Stat()
+    if err!=nil{return "",false,err}
+    if !stat.Mode().IsRegular()||stat.Size()>20*1024*1024 {return "",false,fmt.Errorf("image is not regular or too large: %s",filepath.Base(src))}
+    temp,err:=os.CreateTemp(dir,".import-*")
+    if err!=nil{return "",false,err}
+    tmpName:=temp.Name()
+    defer os.Remove(tmpName)
+    count,copyErr:=io.Copy(temp,io.LimitReader(in,20*1024*1024+1))
+    if syncErr:=temp.Sync();copyErr==nil {copyErr=syncErr}
+    if closeErr:=temp.Close();copyErr==nil {copyErr=closeErr}
+    if copyErr!=nil{return "",false,copyErr}
+    if count>20*1024*1024 {return "",false,fmt.Errorf("image exceeds 20 MiB")}
+    if err:=os.Chmod(tmpName,0600);err!=nil{return "",false,err}
+    if err:=os.Rename(tmpName,final);err!=nil{return "",false,err}
+    for _,oldExt:=range []string{".jpg",".jpeg",".png",".webp"} {
+        if oldExt!=ext {_=os.Remove(filepath.Join(dir,name+oldExt))}
+    }
+    return "/api/nfo/art?id="+strconv.FormatInt(m.ID,10)+"&type="+kind,true,nil
+}
+
+// Reads only an image that BuddyFlix previously copied into its own DataDir.
+// No NFO or media-folder lookup is required for this path.
+func (s *Server) cachedArt(id int64,kind string) (string,bool) {
+    if id<1||(kind!="poster"&&kind!="backdrop"){return "",false}
+    base:=filepath.Join(s.cfg.DataDir,"nfo-art",strconv.FormatInt(id,10)+"-"+kind)
+    for _,ext:=range []string{".jpg",".jpeg",".png",".webp"} {
+        filename:=base+ext
+        st,err:=os.Lstat(filename)
+        if err==nil&&st.Mode().IsRegular()&&st.Size()<=20*1024*1024{return filename,true}
+    }
+    return "",false
+}
+
 func (s *Server) nfoImport(w http.ResponseWriter,r *http.Request) {
     if r.Method!=http.MethodGet && r.Method!=http.MethodPost {jsonErr(w,405,"method not allowed");return}
     s.mu.RLock()
@@ -292,7 +343,28 @@ func (s *Server) nfoImport(w http.ResponseWriter,r *http.Request) {
     // No NFO found = change absolutely nothing.
     if len(hits)==0 {jsonOut(w,preview);return}
     byID:=make(map[int64]nfoHit,len(hits))
-    for _,h:=range hits {byID[h.ID]=h}
+    mediaByID:=make(map[int64]Media,len(items))
+    for _,m:=range items {mediaByID[m.ID]=m}
+    for _,h:=range hits {
+        m:=mediaByID[h.ID]
+        poster,localPoster,err:=s.cacheNFOArt(m,h.Document,"poster")
+        if err!=nil {
+            preview.Failed++
+            if len(preview.Problems)<8 {preview.Problems=append(preview.Problems,filepath.Base(m.Path)+": Poster konnte nicht gesichert werden: "+err.Error())}
+            continue
+        }
+        backdrop,localBackdrop,err:=s.cacheNFOArt(m,h.Document,"backdrop")
+        if err!=nil {
+            preview.Failed++
+            if len(preview.Problems)<8 {preview.Problems=append(preview.Problems,filepath.Base(m.Path)+": Hintergrundbild konnte nicht gesichert werden: "+err.Error())}
+            continue
+        }
+        if localPoster {preview.ImagesCached++}
+        if localBackdrop {preview.ImagesCached++}
+        h.Poster=poster
+        h.Backdrop=backdrop
+        byID[h.ID]=h
+    }
     s.mu.Lock()
     original:=s.st.Media
     updated:=append([]Media(nil),original...)
@@ -324,12 +396,17 @@ func (s *Server) nfoArt(w http.ResponseWriter,r *http.Request) {
     for _,x:=range s.st.Media {if x.ID==id && !x.Missing {m=x;found=true;break}}
     s.mu.RUnlock()
     if !found||m.Path=="" {http.NotFound(w,r);return}
-    file,ok,err:=nfoLocation(m)
-    if err!=nil||!ok {http.NotFound(w,r);return}
-    n,err:=readNFO(file)
-    if err!=nil {http.NotFound(w,r);return}
-    img,ok:=nfoImagePath(m,n,kind)
-    if !ok {http.NotFound(w,r);return}
+    img,ok:=s.cachedArt(id,kind)
+    if !ok {
+        // Compatibility fallback for images imported by earlier dev.123.
+        // Re-import while the NFOs still exist to create permanent copies.
+        file,exists,err:=nfoLocation(m)
+        if err!=nil||!exists {http.NotFound(w,r);return}
+        n,err:=readNFO(file)
+        if err!=nil {http.NotFound(w,r);return}
+        img,ok=nfoImagePath(m,n,kind)
+        if !ok {http.NotFound(w,r);return}
+    }
     f,err:=os.Open(img);if err!=nil {http.NotFound(w,r);return}
     defer f.Close()
     info,err:=f.Stat()

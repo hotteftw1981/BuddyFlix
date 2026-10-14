@@ -118,6 +118,9 @@ Bei einem bestätigten Import werden nur Titel mit **passender, gültiger NFO** 
 
 Der Import arbeitet lokal, benötigt keine gleichzeitige Jellyfin-Verbindung und ändert die Quell-NFOs nicht.
 
+**Ab dev.124:** Beim Import werden lokale Poster und Hintergrundbilder zusätzlich in `BUDDYFLIX_DATA/nfo-art` gesichert. `/api/nfo/art` liefert bevorzugt diese persistenten Kopien und funktioniert damit auch nach dem Löschen der NFO und der ursprünglichen Bilder aus dem Filmordner. Öffentliche Bild-URLs ohne lokale Quelldatei bleiben externe Links (für vollständige Offline-Unabhängigkeit wären Downloads nötig). Importiere erneut, solange die NFOs existieren, wenn du bereits mit dev.123 importiert hast. Das Löschen von NFO-Dateien übernimmt BuddyFlix nicht; auch Jellyfin kann sie später erneut benötigen.
+
+
 ---
 
 ## 🖥️ Weboberfläche

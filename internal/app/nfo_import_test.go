@@ -77,6 +77,36 @@ func TestJellyfinNFOPreviewAndImport(t *testing.T) {
     art:=httptest.NewRecorder()
     s.nfoArt(art,httptest.NewRequest(http.MethodGet,"/api/nfo/art?id=41&type=poster",nil))
     if art.Code!=200||art.Body.String()!="test-poster" {t.Fatalf("art endpoint failed: %d %s",art.Code,art.Body.String())}
+    if err:=os.Remove(nfo);err!=nil {t.Fatal(err)}
+    if err:=os.Remove(filepath.Join(dir,"poster.jpg"));err!=nil {t.Fatal(err)}
+    // Imported artwork must survive deletion of BOTH the NFO and Jellyfin's
+    // original poster. The poster is served from BuddyFlix's private DataDir.
+    restarted,err:=New(s.cfg)
+    if err!=nil {t.Fatal(err)}
+    artAfterDelete:=httptest.NewRecorder()
+    restarted.nfoArt(artAfterDelete,httptest.NewRequest(http.MethodGet,"/api/nfo/art?id=41&type=poster",nil))
+    if artAfterDelete.Code!=200||artAfterDelete.Body.String()!="test-poster" {
+        t.Fatalf("NFO deletion broke cached poster: %d %s",artAfterDelete.Code,artAfterDelete.Body.String())
+    }
+    restarted.mu.RLock()
+    saved:=restarted.st.Media[0]
+    restarted.mu.RUnlock()
+    if saved.Title!="Interstellar"||saved.ExternalIDs["imdb"]!="tt0816692"||saved.Overview!="A journey through space." {
+        t.Fatalf("imported metadata lost after NFO deletion: %+v",saved)
+    }
+
+}
+
+func TestJellyfinNFOImageCacheReportsMissingSource(t *testing.T) {
+    s:=newTestServer(t)
+    dir:=t.TempDir()
+    video:=filepath.Join(dir,"movie.mkv")
+    if err:=os.WriteFile(video,[]byte("video"),0644);err!=nil {t.Fatal(err)}
+    m:=Media{ID:71,Path:video,Kind:"movie"}
+    n:=jellyfinNFO{}
+    url,local,err:=s.cacheNFOArt(m,n,"poster")
+    if err!=nil||local||url!="" {t.Fatalf("expected no image, got %q %v %v",url,local,err)}
+    if _,ok:=s.cachedArt(71,"poster");ok {t.Fatal("empty image cache must stay empty")}
 }
 
 func TestJellyfinNFOMovieFallbackAvoidsAmbiguousFolder(t *testing.T) {

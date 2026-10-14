@@ -301,7 +301,10 @@ function nfoPanel(){
   'Nur bei gültiger NFO werden die bisherigen BuddyFlix-Metadaten und IDs ersetzt. Filme, Profile, Merkliste und Wiedergabefortschritt bleiben erhalten.</p></div>'+
   '<div class="panel-buttons">'+btn("NFO-Dateien prüfen","nfoPreview","primary")+
   (p&&p.found>0?btn("Alle "+num(p.found)+" NFOs übernehmen","nfoApply","",'data-count="'+p.found+'"'):"")+'</div></div>'+
-  (p?summary+samples+(p.problems?.length?'<details class="nfo-problems"><summary>Probleme anzeigen</summary>'+
+  (state.nfoLastResult?'<div class="nfo-confirmed"><strong>Letzter Import: '+num(state.nfoLastResult.applied)+' Medien übernommen · '+num(state.nfoLastResult.images_cached)+' lokale Bilder dauerhaft gesichert</strong>'+
+ (state.nfoLastResult.failed?'<p>'+num(state.nfoLastResult.failed)+' Titel konnten wegen eines Bild- oder Speicherfehlers nicht importiert werden. Bitte prüfen.</p>':'<p>Metadaten sind in BuddyFlix gespeichert. Falls noch alte dev.123-Bilder eingebunden sind: NFO-Import erneut ausführen, bevor du NFO-Dateien entfernst.</p>')+
+ '</div>':"")+
+ (p?summary+samples+(p.problems?.length?'<details class="nfo-problems"><summary>Probleme anzeigen</summary>'+
    p.problems.map(x=>'<p>'+E(x)+'</p>').join("")+'</details>':""):"<p class=\"nfo-hint\">Erst auf „NFO-Dateien prüfen“ klicken. Das verändert noch nichts.</p>")+
   '<p class="nfo-hint">Unterstützt Filmname.nfo und movie.nfo (bei genau einem Film im Ordner). Vorhandene NFO-Dateien werden niemals verändert.</p></section>';
 }
@@ -475,8 +478,8 @@ async function handleAction(btn){
    p.missing+" ohne NFO und "+p.invalid+" ungültige Einträge bleiben unverändert. "+
    "Vorhandene Profile, Fortschritte und Videodateien werden nicht verändert.",
    async()=>{const result=await api("/api/nfo/import",{method:"POST",body:data({confirm:true})});
-    await refresh({renderNow:false});state.nfoPreview=await api("/api/nfo/import");
-    render();toast(result.applied+" NFO-Zuordnungen übernommen","success")}, "Jetzt übernehmen");
+    await refresh({renderNow:false});state.nfoLastResult=result;state.nfoPreview=await api("/api/nfo/import");
+    render();toast(result.applied+" NFO-Zuordnungen übernommen · "+num(result.images_cached)+" Bilder gesichert"+(result.failed?" · "+num(result.failed)+" Fehler":""),result.failed?"error":"success")}, "Jetzt übernehmen");
   break}
  case "bulkMeta":{state.job=await api("/api/metadata/bulk",{method:"POST"});toast("Metadatenlauf gestartet","success");render();pollJob();break}
  case "cleanup":confirmBox("Fehlende Einträge bereinigen?","Die Medien werden nur aus dem Index entfernt, nicht vom NAS.",async()=>{
