@@ -494,3 +494,40 @@ img{max-width:100%;display:block}
 .episode-artwork-fix>p{max-width:850px;font-size:12px;line-height:1.75;color:#b9c8c0}
 .episode-artwork-fix .panel-buttons{margin:16px 0}
 .episode-artwork-fix .job-box{margin-top:10px}
+
+
+/* BuddyFlix Cinema: native decoding, honest codec diagnostics, audio compatibility fallback. */
+.cinema-player{background:#020507;display:flex;align-items:center;justify-content:center;color:#f0f3ef}
+.cinema-player>video{width:100%;height:100%;object-fit:contain;display:block;position:absolute;inset:0;cursor:pointer}
+.cinema-top{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;padding:27px 42px 80px;background:linear-gradient(180deg,#05080cdb,transparent);pointer-events:none}
+.cinema-top button{pointer-events:auto}
+.cinema-now{display:flex;flex-direction:column;gap:5px}
+.cinema-now>span{font-size:10px;color:#a3b5ae;font-weight:800;letter-spacing:.16em}
+.cinema-now strong{font-size:23px;font-weight:800;letter-spacing:-.025em}
+.cinema-now small{color:#b7c3bd;font-size:12px}
+.cinema-close{font-size:22px!important}
+.cinema-controls{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:100px max(24px,3vw) 22px;background:linear-gradient(0deg,#030609ed 0%,#030609c7 48%,transparent 100%);display:grid;gap:10px}
+.cinema-timeline{display:grid;gap:4px}
+.cinema-timeline input{width:100%;accent-color:#e6efe9;cursor:pointer;min-height:22px}
+.cinema-times{display:flex;justify-content:space-between;color:#d7e0db;font-size:12px;font-variant-numeric:tabular-nums}
+.cinema-control-row,.cinema-primary,.cinema-secondary{display:flex;align-items:center;gap:9px}
+.cinema-control-row{justify-content:space-between;flex-wrap:wrap;row-gap:8px}
+.cinema-primary{min-width:0}
+.cinema-secondary{justify-content:flex-end}
+.cinema-icon,.cinema-mode{border:1px solid #ffffff34;background:#ffffff13;color:#f5f7f4;border-radius:10px;cursor:pointer;font-weight:750;min-height:40px}
+.cinema-icon{min-width:43px;font-size:15px;padding:0 10px}
+.cinema-icon:hover,.cinema-mode:hover{background:#ffffff30;border-color:#a3b9ad}
+.cinema-mode{padding:0 15px;font-size:12px;white-space:nowrap}
+.cinema-mode:disabled{opacity:.55;cursor:not-allowed}
+.cinema-format{font-size:11px;color:#bcc9c1;font-weight:600;white-space:nowrap;margin-right:6px}
+#cinemaVolume{width:100px;accent-color:#dceadf;cursor:pointer}
+.cinema-message{position:absolute;z-index:3;bottom:170px;left:50%;transform:translateX(-50%);max-width:min(640px,88vw);padding:13px 20px;border:1px solid #6e877a;background:#192821ed;color:#e4f4e7;border-radius:11px;font-size:12px;line-height:1.6;box-shadow:0 12px 35px #0008;text-align:center}
+.cinema-message.warning{border-color:#bf9872;background:#422e24ed;color:#fff0da}
+.cinema-message[hidden]{display:none}
+@media(max-width:700px){
+ .cinema-top{padding:17px 18px 55px}.cinema-now strong{font-size:17px}
+ .cinema-controls{padding:65px 12px 12px}
+ .cinema-control-row{gap:8px}.cinema-primary,.cinema-secondary{width:100%;justify-content:space-between}
+ .cinema-format{font-size:10px}.cinema-icon{min-height:37px;min-width:37px}
+ #cinemaVolume{width:74px}.cinema-message{bottom:200px}
+}

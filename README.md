@@ -426,3 +426,15 @@ Unter **Verwaltung → Metadaten → Jellyfin-Serien übernehmen** bietet BuddyF
 - Bei bereits vorhandenen Filmen/Serien ist kein erneuter NFO-Import erforderlich. Nach Start des Hintergrundlaufs zeigt die Oberfläche Fortschritt, gesicherte Szenenbilder, verbleibende Fälle und Downloadfehler.
 
 Episodebilder benötigen eine vorhandene Serien-ID und die passende **Standard-Staffelreihenfolge**; bei abweichender DVD-/Streaming-Sortierung können bestimmte Vorschaubilder fehlen oder unpassend sein. Die originalen NFO-Dateien bitte bis zur Kontrolle weiterhin aufheben.
+
+## 🔊 BuddyFlix Cinema + Audio-Kompatibilitätsmodus (ab dev.130)
+
+Der Webplayer wurde vollständig überarbeitet. Statt eines einfachen HTML-Videoplayers gibt es nun eigene Bedienelemente für Pause/Play, Sprung ±10 Sekunden, Lautstärke/Stummschaltung, Zeitleiste, Vollbild und die Tastenkürzel **Leertaste/K**, **Pfeil links/rechts**, **M**, **F** sowie **Esc**. Der Fortschritt bleibt profilbezogen.
+
+**Warum manchmal kein Ton zu hören war:** BuddyFlix hat die Filmdateien bisher direkt an den Browser übertragen. Besonders **AC3 / E-AC3 / DTS** in MKV/MP4 können dann trotz laufendem Bild stumm bleiben. Der neue Codec-Check verwendet `ffprobe`, sofern vorhanden. Für bekannte problematische Audioformate oder MKV-Container versucht BuddyFlix bei verfügbarer FFmpeg-Binary automatisch den **Audio-Kompatibilitätsmodus**. Manuell lässt er sich über **„Ton reparieren“** aktivieren.
+
+Der Kompatibilitätsstream verwendet FFmpeg: **Video H.264 kopieren** (`-c:v copy`), **nur die Audiospur als AAC Stereo codieren** (`-c:a aac -ac 2`) und als fragmentiertes MP4 über einen authentifizierten Endpoint `/stream/compat/{id}` übertragen. Der Modus ist bewusst auf **einen parallelen Stream** begrenzt, damit das alte ARMHF-QNAP nicht überlastet wird. Beim Springen wird der kompatible Stream am Zielzeitpunkt neu gestartet. Der ursprüngliche Medienordner und die Quelldatei werden niemals verändert.
+
+**Systemvoraussetzung:** FFmpeg (und idealerweise FFprobe) müssen auf dem NAS als ARMHF-kompatible ausführbare Programme vorhanden sein. BuddyFlix sucht im PATH, an typischen QNAP-/Entware-Orten und auch in Jellyfin-QPKG-Verzeichnissen. Bei Bedarf können `BUDDYFLIX_FFMPEG` und `BUDDYFLIX_FFPROBE` auf die Executables zeigen. Der Status wird in `/api/playback/check?id=<MEDIA_ID>` angezeigt.
+
+Bei **HEVC/H.265, MPEG-2 oder anderen nicht browserkompatiblen Videocodecs** hilft reine Audio-Konvertierung nicht zuverlässig. In diesem Fall weist BuddyFlix ausdrücklich darauf hin: Die zukünftige Videotranscodierung ist ein eigenes Thema und auf ARMv7 besonders rechenintensiv. Ohne FFmpeg bleibt Direct Play möglich, aber nicht jede Tonspur. Die neue Wiedergabe ist automatisiert auf Befehlsparameter und Fehlerfälle getestet; tatsächliche Codec-Unterstützung muss auf dem QNAP/Browsersystem geprüft werden.

@@ -338,6 +338,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/artwork/upload", s.auth(s.artworkUpload))
 	s.mux.HandleFunc("/api/metadata/providers", s.auth(s.metadataProviders))
 	s.mux.HandleFunc("/api/metadata/", s.auth(s.metadata))
+	s.mux.HandleFunc("/api/playback/check", s.auth(s.playbackCheck))
+	s.mux.HandleFunc("/api/playback/ffmpeg", s.auth(s.ffmpegInfo))
+	s.mux.HandleFunc("/stream/compat/", s.auth(s.streamAudioCompatible))
 	s.mux.HandleFunc("/stream/", s.auth(s.stream))
 	s.mux.HandleFunc("/", s.static)
 }

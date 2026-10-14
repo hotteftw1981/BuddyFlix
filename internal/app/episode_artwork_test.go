@@ -101,7 +101,7 @@ func TestEpisodesArtworkRepairTargetsOnlyMissingEpisodeStills(t *testing.T){
 func TestEpisodeArtworkRemainsAfterOriginalNFODeleted(t *testing.T){
  s:=newTestServer(t)
  s.mu.Lock()
- s.st.Media=[]Media{{ID:12,Kind:"episode",Title:"Pilot",SeriesTitle:"Ballers",Season:1,Episode:1,
+ s.st.Media=[]Media{{ID:12,Kind:"episode",Path:"/media/Pilot.mkv",Title:"Pilot",SeriesTitle:"Ballers",Season:1,Episode:1,
   ExternalIDs:map[string]string{"tvdb":"101"},MetadataProvider:"jellyfin-nfo"}}
  s.st.Progress[12]=Progress{Position:153,Duration:300}
  s.mu.Unlock()

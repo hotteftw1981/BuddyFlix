@@ -537,31 +537,125 @@ async function doMediaAction(id,action){
  await refresh();toast("Änderung gespeichert","success");
 }
 function openPlayer(m,mode){
- const node=document.createElement("div");
- node.className="player-view";node.id="bfPlayer";
- node.innerHTML='<video controls autoplay playsinline preload="metadata" src="/stream/'+m.id+'"></video>'+
-  '<div class="player-top"><div><b>'+E(m.title)+'</b><span>'+E(isEpisode(m)?m.series_title||"":m.year||"")+'</span></div>'+
-  '<button aria-label="Player schließen" id="closePlayer">×</button></div>'+
-  '<div id="playerError" class="player-error" hidden>Der Film konnte nicht gestartet werden. Prüfe, ob das Format im Browser unterstützt wird.</div>';
+ const existing=q("#bfPlayer");if(existing)existing.remove();
+ const node=document.createElement("div");node.className="player-view cinema-player";node.id="bfPlayer";
+ node.innerHTML='<video playsinline preload="metadata" aria-label="'+E(m.title)+'"></video>'+
+ '<div class="cinema-top"><div class="cinema-now"><span>DU SCHAUST</span><strong>'+E(m.title)+'</strong><small>'+
+ E(isEpisode(m)?(m.series_title||"")+" · S"+String(m.season||0).padStart(2,"0")+" E"+String(m.episode||0).padStart(2,"0"):m.year||"Film")+
+ '</small></div><button type="button" class="cinema-icon cinema-close" data-player="close" title="Player schließen">✕</button></div>'+
+ '<div class="cinema-message" id="cinemaMessage" hidden></div>'+
+ '<div class="cinema-controls"><div class="cinema-timeline">'+
+ '<input type="range" id="cinemaSeek" min="0" max="1000" step="1" value="0" aria-label="Wiedergabeposition">'+
+ '<div class="cinema-times"><span id="cinemaCurrent">0:00</span><span id="cinemaDuration">0:00</span></div></div>'+
+ '<div class="cinema-control-row"><div class="cinema-primary">'+
+ '<button type="button" class="cinema-icon" data-player="play" id="cinemaPlay" aria-label="Pause">❚❚</button>'+
+ '<button type="button" class="cinema-icon" data-player="back" title="10 Sekunden zurück">↶ 10</button>'+
+ '<button type="button" class="cinema-icon" data-player="forward" title="10 Sekunden vor">10 ↷</button>'+
+ '<button type="button" class="cinema-icon" data-player="mute" id="cinemaMute" title="Stumm schalten">🔊</button>'+
+ '<input type="range" min="0" max="100" value="100" id="cinemaVolume" aria-label="Lautstärke">'+
+ '</div><div class="cinema-secondary"><span id="cinemaFormat" class="cinema-format">Format wird geprüft …</span>'+
+ '<button type="button" class="cinema-mode" data-player="compat" id="cinemaCompat" title="Audio-Kompatibilitätsmodus">🔊 Ton reparieren</button>'+
+ '<button type="button" class="cinema-icon" data-player="fullscreen" title="Vollbild">⛶</button></div></div></div>';
  document.body.append(node);
- const video=q("video",node);let closed=false,last=0;
- const save=async()=>{const p=video.currentTime,d=video.duration;if(!Number.isFinite(d)||d<=0)return;
-  try{await api("/api/progress",{method:"POST",keepalive:true,body:data({media_id:m.id,Position:p,Duration:d})})}catch{}};
- const close=async()=>{
-  if(closed)return;closed=true;const next=isEpisode(m)?nextEpisode(m):null;
-  document.removeEventListener("keydown",escape);
-  video.pause();await save();node.remove();await refresh();if(next&&video.ended)toast("Nächste Folge: "+next.title);
+ const video=q("video",node),seek=q("#cinemaSeek",node),volume=q("#cinemaVolume",node);
+ const compatButton=q("#cinemaCompat",node),format=q("#cinemaFormat",node);
+ const currentLabel=q("#cinemaCurrent",node),endLabel=q("#cinemaDuration",node),playButton=q("#cinemaPlay",node);
+ let closed=false,playbackMode="direct",baseOffset=0,knownDuration=0,lastSave=0,check=null,transitioning=false;
+ const clock=(n)=>{n=Math.max(0,Math.floor(n||0));const h=Math.floor(n/3600),min=Math.floor(n%3600/60),sec=n%60;
+  return h?h+":"+String(min).padStart(2,"0")+":"+String(sec).padStart(2,"0"):min+":"+String(sec).padStart(2,"0")};
+ const absolute=()=>baseOffset+(Number.isFinite(video.currentTime)?video.currentTime:0);
+ const duration=()=>knownDuration||(Number.isFinite(video.duration)?baseOffset+video.duration:0)||m.runtime*60||0;
+ const message=(text,warning=true)=>{const e=q("#cinemaMessage",node);if(!e)return;e.hidden=!text;e.textContent=text||"";e.classList.toggle("warning",warning)};
+ const renderStatus=()=>{
+  const pos=absolute(),dur=duration();
+  currentLabel.textContent=clock(pos);endLabel.textContent=clock(dur);
+  if(dur>0)seek.value=String(Math.min(1000,Math.round(1000*pos/dur)));
+  playButton.textContent=video.paused?"▶":"❚❚";
+  playButton.setAttribute("aria-label",video.paused?"Wiedergabe starten":"Pause");
+  q("#cinemaMute",node).textContent=video.muted||video.volume===0?"🔇":"🔊";
+  compatButton.textContent=playbackMode==="compat"?"✓ AAC-Ton aktiv":"🔊 Ton reparieren";
+  compatButton.disabled=!!check&&!check.ffmpeg_available&&playbackMode==="direct";
+  format.textContent=playbackMode==="compat"?"AAC Stereo · Video Direct Stream":
+    check?([check.video_codec?.toUpperCase(),check.audio_codec?.toUpperCase()].filter(Boolean).join(" · ")||"Direct Play"):"Direct Play";
  };
- const escape=e=>{if(e.key==="Escape")close()};
- document.addEventListener("keydown",escape);
- q("#closePlayer",node).onclick=close;
- video.addEventListener("loadedmetadata",()=>{if(mode==="resume"&&m.position>20&&m.position<video.duration-20)video.currentTime=m.position});
- video.addEventListener("timeupdate",()=>{if(Date.now()-last>12000){last=Date.now();save()}});
- video.addEventListener("seeked",save);
- video.addEventListener("pause",save);
- video.addEventListener("ended",close);
- video.addEventListener("error",()=>{q("#playerError",node).hidden=false});
- video.play().catch(()=>{});
+ const save=async()=>{const dur=duration();if(!dur||!Number.isFinite(dur)||dur<=0||closed)return;
+  try{await api("/api/progress",{method:"POST",keepalive:true,body:data({media_id:m.id,Position:absolute(),Duration:dur})})}catch{}};
+ const setPlayback=(kind,at=0)=>{
+  if(closed)return;
+  transitioning=true;video.pause();
+  playbackMode=kind;baseOffset=kind==="compat"?Math.max(0,at):0;
+  video.removeAttribute("src");video.load();
+  video.src=kind==="compat"?"/stream/compat/"+m.id+"?start="+baseOffset:"/stream/"+m.id;
+  video.load();
+  if(kind==="direct"&&at>0){
+   video.addEventListener("loadedmetadata",function seekDirect(){if(!closed){try{video.currentTime=at}catch{}}},{once:true});
+  }
+  transitioning=false;
+  message(kind==="compat"?"Kompatibilitätsmodus: Ton wird als AAC Stereo übertragen. Beim Springen lädt der Stream neu.":"",false);
+  video.play().catch(()=>message("Autoplay wurde blockiert. Klicke auf ▶, um die Wiedergabe zu starten.",false));
+  renderStatus();
+ };
+ const toggle=()=>{if(video.paused){video.play().catch(()=>message("Wiedergabe konnte nicht gestartet werden."))}else video.pause();renderStatus()};
+ const jump=(target)=>{
+  const max=duration();if(max>0)target=Math.min(Math.max(0,target),Math.max(0,max-0.25));else target=Math.max(0,target);
+  if(playbackMode==="compat")setPlayback("compat",target);
+  else if(video.readyState>0){video.currentTime=target}else video.addEventListener("loadedmetadata",()=>video.currentTime=target,{once:true});
+  renderStatus();
+ };
+ const close=async()=>{if(closed)return;await save();closed=true;document.removeEventListener("keydown",onKey);
+  video.pause();video.removeAttribute("src");video.load();node.remove();await refresh()};
+ const onKey=(e)=>{
+  if(closed||!node.isConnected||e.target.matches("input,textarea,select"))return;
+  if(e.key==="Escape"){e.preventDefault();close()}
+  if(e.key===" "||e.key.toLowerCase()==="k"){e.preventDefault();toggle()}
+  if(e.key==="ArrowLeft"){e.preventDefault();jump(absolute()-10)}
+  if(e.key==="ArrowRight"){e.preventDefault();jump(absolute()+10)}
+  if(e.key.toLowerCase()==="m"){e.preventDefault();video.muted=!video.muted;renderStatus()}
+  if(e.key.toLowerCase()==="f"){e.preventDefault();node.requestFullscreen?.().catch(()=>{})}
+ };
+ document.addEventListener("keydown",onKey);
+ node.addEventListener("click",e=>{
+  const button=e.target.closest("[data-player]");if(!button)return;
+  const key=button.dataset.player;
+  if(key==="close")close();if(key==="play")toggle();
+  if(key==="back")jump(absolute()-10);if(key==="forward")jump(absolute()+10);
+  if(key==="mute"){video.muted=!video.muted;renderStatus()}
+  if(key==="fullscreen"){if(document.fullscreenElement)document.exitFullscreen?.();else node.requestFullscreen?.().catch(()=>{})}
+  if(key==="compat"){
+   if(playbackMode==="compat"){setPlayback("direct",absolute());return}
+   if(check&&!check.ffmpeg_available){message("Auf deinem QNAP ist FFmpeg nicht verfügbar. Für AAC-Ton benötigen wir ein ARMHF-kompatibles FFmpeg.",true);return}
+   if(check&&check.video_codec&&check.video_codec!=="h264"&&check.video_codec!=="avc1"){
+    message("Dieses Video nutzt "+check.video_codec.toUpperCase()+". Audio-Konvertierung allein macht diesen Video-Codec nicht browserkompatibel.",true);return}
+   setPlayback("compat",absolute());
+  }
+ });
+ video.addEventListener("click",toggle);
+ video.addEventListener("loadedmetadata",()=>{if(!closed)renderStatus()});
+ video.addEventListener("timeupdate",()=>{renderStatus();if(Date.now()-lastSave>12000){lastSave=Date.now();save()}});
+ video.addEventListener("pause",renderStatus);video.addEventListener("play",renderStatus);
+ video.addEventListener("ended",async()=>{await save();message("Wiedergabe abgeschlossen. Mit ✕ zurück zur Mediathek.",false);renderStatus()});
+ video.addEventListener("error",()=>{
+  if(!node.isConnected||transitioning)return;
+  message(playbackMode==="compat"?"Der Audio-Kompatibilitätsstream konnte nicht abgespielt werden. Prüfe FFmpeg im QNAP-Protokoll oder wechsle zu Direct Play.":"Dieser Browser unterstützt das Format möglicherweise nicht vollständig. Versuche „Ton reparieren“.",true);
+ });
+ volume.addEventListener("input",()=>{video.volume=Number(volume.value)/100;if(video.volume>0)video.muted=false;renderStatus()});
+ seek.addEventListener("change",()=>jump(duration()*Number(seek.value)/1000));
+ const target=(mode==="resume"&&m.position>20)?m.position:0;
+ setPlayback("direct",target);
+ api("/api/playback/check?id="+m.id).then(info=>{
+  if(closed)return;check=info;
+  if(info.duration>0)knownDuration=info.duration;
+  if(info.recommended==="compat"&&info.can_repair_audio&&playbackMode==="direct"){
+   setPlayback("compat",absolute()||target);
+  }else if(info.recommended==="direct"&&!info.ffmpeg_available&&
+   (["ac3","eac3","dts","truehd","flac","pcm_s16le"].includes(info.audio_codec)||
+    ["mkv","avi","m2ts","ts"].includes(info.container))){
+   message("Tonspur "+(info.audio_codec||"unbekannt")+" wird möglicherweise nicht unterstützt. FFmpeg ist auf dem NAS noch nicht verfügbar.",true);
+  }else if(info.video_codec&&info.video_codec!=="h264"&&info.video_codec!=="avc1"){
+   message("Video-Codec "+info.video_codec.toUpperCase()+": Manche Browser unterstützen dieses Format nicht. Eine reine Audio-Umwandlung reicht hier eventuell nicht.",true);
+  }
+  renderStatus();
+ }).catch(()=>{format.textContent="Direct Play · Codec-Prüfung nicht verfügbar"});
 }
 function nextEpisode(m){const s=state.shows.find(x=>x.title===m.series_title);if(!s)return null;return episodes(s).find(x=>x.season>m.season||x.season===m.season&&x.episode>m.episode)}
 async function handleAction(btn){
