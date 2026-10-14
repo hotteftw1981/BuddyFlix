@@ -104,9 +104,8 @@ func inspectPlayback(path string) playbackInfo{
    }
   }
  }
- if info.VideoCodec!="" && info.VideoCodec!="h264" && info.VideoCodec!="avc1" {
-  info.Reason="Video-Codec "+info.VideoCodec+": Audio-Konvertierung allein garantiert keine Browser-Wiedergabe."
-  info.Recommended="direct"
+ if !audioCompatibleVideo(info.VideoCodec) {
+  info.Reason="Video-Codec "+info.VideoCodec+": Audio-Konvertierung allein reicht hier nicht aus."
   info.CanRepairAudio=false
   return info
  }
@@ -116,7 +115,7 @@ func inspectPlayback(path string) playbackInfo{
  if unsupportedAudio||needsRemux {
   if info.FFmpegAvailable{
    info.Recommended="compat"
-   info.Reason="Browserkompatibler Ton (AAC Stereo), Video ohne Neucodierung."
+   info.Reason="AAC-Stereo mit unverändertem Video (bei HEVC abhängig von der Browserunterstützung)."
   }else{
    info.Recommended="direct"
    info.Reason="Tonspur/Container vermutlich nicht browserkompatibel. FFmpeg wurde auf dem QNAP nicht gefunden."
@@ -136,6 +135,26 @@ func (s *Server) playbackCheck(w http.ResponseWriter,r *http.Request){
  result:=inspectPlayback(path)
  result.ID=id
  jsonOut(w,result)
+}
+func audioCompatibleVideo(codec string)bool {
+ switch strings.ToLower(codec){
+ case "", "h264","avc1","hevc","h265","hvc1":return true
+ default:return false
+ }
+}
+func audioRemuxArgsForCodec(path string,start float64,codec string)[]string{
+ args:=audioRemuxArgs(path,start)
+ if codec=="hevc"||codec=="h265"||codec=="hvc1" {
+  // HEVC from MKV must be tagged hvc1 in fragmented MP4 on Chromium/Windows.
+  for i:=range args {
+   if args[i]=="-movflags"{
+    result:=append([]string{},args[:i]...)
+    result=append(result,"-tag:v","hvc1")
+    return append(result,args[i:]...)
+   }
+  }
+ }
+ return args
 }
 func audioRemuxArgs(path string,start float64)[]string{
  args:=[]string{"-hide_banner","-nostdin","-loglevel","error"}
@@ -171,15 +190,17 @@ func (s *Server) streamAudioCompatible(w http.ResponseWriter,r *http.Request){
  }
  // A diagnostic probe can prevent a second unsupported video format from
  // producing a confusing silent stream. We do not block if ffprobe is absent.
+ codec:=""
  if binaryPath("ffprobe")!=""{
   media:=inspectPlayback(path)
-  if media.VideoCodec!=""&&media.VideoCodec!="h264"&&media.VideoCodec!="avc1"{
-   jsonErr(w,415,"Video-Codec "+media.VideoCodec+" benötigt Video-Transcoding; Audio-Reparatur allein genügt nicht.");return
+  codec=media.VideoCodec
+  if !audioCompatibleVideo(codec){
+   jsonErr(w,415,"Video-Codec "+codec+" kann nicht ausschließlich mit einer Audio-Reparatur umgewandelt werden.");return
   }
  }
  ctx,cancel:=context.WithCancel(r.Context())
  defer cancel()
- cmd:=exec.CommandContext(ctx,ffmpeg,audioRemuxArgs(path,start)...)
+ cmd:=exec.CommandContext(ctx,ffmpeg,audioRemuxArgsForCodec(path,start,codec)...)
  var stderr bytes.Buffer
  cmd.Stderr=&stderr
  stdout,err:=cmd.StdoutPipe()

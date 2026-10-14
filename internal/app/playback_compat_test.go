@@ -27,6 +27,28 @@ func TestPlaybackProbeDiagnosesAC3AndMKV(t *testing.T){
  if info.Container!="mkv"{t.Fatal("file extension was not preserved")}
 }
 
+func TestPlaybackHEVCAC3PermitsAudioOnlyRepair(t *testing.T){
+ dir:=t.TempDir()
+ probe:=filepath.Join(dir,"probe-hevc")
+ output:="#!/bin/sh\nprintf '%s' '{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"hevc\"},{\"codec_type\":\"audio\",\"codec_name\":\"ac3\"}],\"format\":{\"duration\":\"340\"}}'\n"
+ if err:=os.WriteFile(probe,[]byte(output),0755);err!=nil{t.Fatal(err)}
+ ffmpeg:=filepath.Join(dir,"ffmpeg-hevc")
+ if err:=os.WriteFile(ffmpeg,[]byte("#!/bin/sh\nexit 0\n"),0755);err!=nil{t.Fatal(err)}
+ t.Setenv("BUDDYFLIX_FFPROBE",probe)
+ t.Setenv("BUDDYFLIX_FFMPEG",ffmpeg)
+ info:=inspectPlayback("/media/a-hevc-movie.mkv")
+ if info.AudioCodec!="ac3"||info.VideoCodec!="hevc"||info.Recommended!="compat"||!info.CanRepairAudio{
+  t.Fatalf("HEVC+AC3 should allow copying video and converting audio: %+v",info)
+ }
+ args:=strings.Join(audioRemuxArgsForCodec("/media/a-hevc-movie.mkv",0,"hevc")," ")
+ if !strings.Contains(args,"-c:v copy")||!strings.Contains(args,"-c:a aac")||!strings.Contains(args,"-tag:v hvc1"){
+  t.Fatalf("HEVC remux must preserve video and set hvc1 MP4 tag: %s",args)
+ }
+ if audioCompatibleVideo("mpeg2video")||!audioCompatibleVideo("hevc")||!audioCompatibleVideo("h264"){
+  t.Fatal("allowed codec check invalid")
+ }
+}
+
 func TestPlaybackCheckDoesNotLeakOtherFiles(t *testing.T){
  s:=newTestServer(t)
  s.st.Media=[]Media{{ID:3,Title:"Allowed",Path:"/private/allowed.mp4"}}

@@ -539,10 +539,11 @@ async function doMediaAction(id,action){
 function openPlayer(m,mode){
  const existing=q("#bfPlayer");if(existing)existing.remove();
  const node=document.createElement("div");node.className="player-view cinema-player";node.id="bfPlayer";
- node.innerHTML='<video playsinline preload="metadata" aria-label="'+E(m.title)+'"></video>'+
+ node.innerHTML='<video autoplay playsinline preload="metadata" aria-label="'+E(m.title)+'"></video>'+
  '<div class="cinema-top"><div class="cinema-now"><span>DU SCHAUST</span><strong>'+E(m.title)+'</strong><small>'+
  E(isEpisode(m)?(m.series_title||"")+" · S"+String(m.season||0).padStart(2,"0")+" E"+String(m.episode||0).padStart(2,"0"):m.year||"Film")+
  '</small></div><button type="button" class="cinema-icon cinema-close" data-player="close" title="Player schließen">✕</button></div>'+
+ '<div class="cinema-start-overlay" id="cinemaStart" hidden><button type="button" data-player="start" class="cinema-start-button" aria-label="Film mit Ton starten"><span class="cinema-start-triangle">▶</span><strong>Film mit Ton starten</strong><small>Dein Browser verlangt einen zusätzlichen Klick</small></button></div>'+
  '<div class="cinema-message" id="cinemaMessage" hidden></div>'+
  '<div class="cinema-controls"><div class="cinema-timeline">'+
  '<input type="range" id="cinemaSeek" min="0" max="1000" step="1" value="0" aria-label="Wiedergabeposition">'+
@@ -558,7 +559,7 @@ function openPlayer(m,mode){
  '<button type="button" class="cinema-icon" data-player="fullscreen" title="Vollbild">⛶</button></div></div></div>';
  document.body.append(node);
  const video=q("video",node),seek=q("#cinemaSeek",node),volume=q("#cinemaVolume",node);
- const compatButton=q("#cinemaCompat",node),format=q("#cinemaFormat",node);
+ const compatButton=q("#cinemaCompat",node),format=q("#cinemaFormat",node),startOverlay=q("#cinemaStart",node);
  const currentLabel=q("#cinemaCurrent",node),endLabel=q("#cinemaDuration",node),playButton=q("#cinemaPlay",node);
  let closed=false,playbackMode="direct",baseOffset=0,knownDuration=0,lastSave=0,check=null,transitioning=false;
  const clock=(n)=>{n=Math.max(0,Math.floor(n||0));const h=Math.floor(n/3600),min=Math.floor(n%3600/60),sec=n%60;
@@ -580,11 +581,22 @@ function openPlayer(m,mode){
  };
  const save=async()=>{const dur=duration();if(!dur||!Number.isFinite(dur)||dur<=0||closed)return;
   try{await api("/api/progress",{method:"POST",keepalive:true,body:data({media_id:m.id,Position:absolute(),Duration:dur})})}catch{}};
+ // A play request from a film-click or manual button carries user activation.
+ // Never switch sources automatically after an async codec probe, as this
+ // would revoke that gesture and often trigger a blocked autoplay request.
+ const attemptPlayback=()=>{
+  const result=video.play();
+  if(result&&typeof result.catch==="function")result.catch(error=>{
+   if(closed||error?.name==="AbortError"||!video.paused)return;
+   startOverlay.hidden=false;
+   if(error?.name==="NotAllowedError")message("Dein Browser blockiert Autostart mit Ton. Klicke auf den großen Startknopf.",false);
+   else message("Wiedergabe konnte nicht automatisch starten: "+(error?.message||"Browserfehler"),true);
+  });
+ };
  const setPlayback=(kind,at=0)=>{
   if(closed)return;
   transitioning=true;video.pause();
   playbackMode=kind;baseOffset=kind==="compat"?Math.max(0,at):0;
-  video.removeAttribute("src");video.load();
   video.src=kind==="compat"?"/stream/compat/"+m.id+"?start="+baseOffset:"/stream/"+m.id;
   video.load();
   if(kind==="direct"&&at>0){
@@ -592,10 +604,11 @@ function openPlayer(m,mode){
   }
   transitioning=false;
   message(kind==="compat"?"Kompatibilitätsmodus: Ton wird als AAC Stereo übertragen. Beim Springen lädt der Stream neu.":"",false);
-  video.play().catch(()=>message("Autoplay wurde blockiert. Klicke auf ▶, um die Wiedergabe zu starten.",false));
+  startOverlay.hidden=true;
+  attemptPlayback();
   renderStatus();
  };
- const toggle=()=>{if(video.paused){video.play().catch(()=>message("Wiedergabe konnte nicht gestartet werden."))}else video.pause();renderStatus()};
+ const toggle=()=>{if(video.paused)attemptPlayback();else video.pause();renderStatus()};
  const jump=(target)=>{
   const max=duration();if(max>0)target=Math.min(Math.max(0,target),Math.max(0,max-0.25));else target=Math.max(0,target);
   if(playbackMode==="compat")setPlayback("compat",target);
@@ -618,21 +631,25 @@ function openPlayer(m,mode){
   const button=e.target.closest("[data-player]");if(!button)return;
   const key=button.dataset.player;
   if(key==="close")close();if(key==="play")toggle();
+  if(key==="start"){attemptPlayback();}
   if(key==="back")jump(absolute()-10);if(key==="forward")jump(absolute()+10);
   if(key==="mute"){video.muted=!video.muted;renderStatus()}
   if(key==="fullscreen"){if(document.fullscreenElement)document.exitFullscreen?.();else node.requestFullscreen?.().catch(()=>{})}
   if(key==="compat"){
+   compatButton.classList.remove("cinema-mode-recommended");
    if(playbackMode==="compat"){setPlayback("direct",absolute());return}
    if(check&&!check.ffmpeg_available){message("Auf deinem QNAP ist FFmpeg nicht verfügbar. Für AAC-Ton benötigen wir ein ARMHF-kompatibles FFmpeg.",true);return}
-   if(check&&check.video_codec&&check.video_codec!=="h264"&&check.video_codec!=="avc1"){
-    message("Dieses Video nutzt "+check.video_codec.toUpperCase()+". Audio-Konvertierung allein macht diesen Video-Codec nicht browserkompatibel.",true);return}
+   if(check&&check.video_codec&&!["h264","avc1","hevc","h265","hvc1"].includes(check.video_codec)){
+    message("Dieses Video nutzt "+check.video_codec.toUpperCase()+". Der reine Audio-Fix genügt dafür nicht.",true);return}
    setPlayback("compat",absolute());
   }
  });
  video.addEventListener("click",toggle);
  video.addEventListener("loadedmetadata",()=>{if(!closed)renderStatus()});
  video.addEventListener("timeupdate",()=>{renderStatus();if(Date.now()-lastSave>12000){lastSave=Date.now();save()}});
- video.addEventListener("pause",renderStatus);video.addEventListener("play",renderStatus);
+ video.addEventListener("pause",renderStatus);
+ video.addEventListener("play",renderStatus);
+ video.addEventListener("playing",()=>{startOverlay.hidden=true;renderStatus()});
  video.addEventListener("ended",async()=>{await save();message("Wiedergabe abgeschlossen. Mit ✕ zurück zur Mediathek.",false);renderStatus()});
  video.addEventListener("error",()=>{
   if(!node.isConnected||transitioning)return;
@@ -646,13 +663,16 @@ function openPlayer(m,mode){
   if(closed)return;check=info;
   if(info.duration>0)knownDuration=info.duration;
   if(info.recommended==="compat"&&info.can_repair_audio&&playbackMode==="direct"){
-   setPlayback("compat",absolute()||target);
+   // Do not restart the video asynchronously: this loses the original
+   // browser user gesture and causes blocked unmuted autoplay.
+   message("Tonspur "+(info.audio_codec||"unbekannt").toUpperCase()+" erkannt. Falls kein Ton kommt: „Ton reparieren“ klicken. BuddyFlix wandelt nur den Ton in AAC um.",false);
+   compatButton.classList.add("cinema-mode-recommended");
   }else if(info.recommended==="direct"&&!info.ffmpeg_available&&
    (["ac3","eac3","dts","truehd","flac","pcm_s16le"].includes(info.audio_codec)||
     ["mkv","avi","m2ts","ts"].includes(info.container))){
    message("Tonspur "+(info.audio_codec||"unbekannt")+" wird möglicherweise nicht unterstützt. FFmpeg ist auf dem NAS noch nicht verfügbar.",true);
-  }else if(info.video_codec&&info.video_codec!=="h264"&&info.video_codec!=="avc1"){
-   message("Video-Codec "+info.video_codec.toUpperCase()+": Manche Browser unterstützen dieses Format nicht. Eine reine Audio-Umwandlung reicht hier eventuell nicht.",true);
+  }else if(info.video_codec&&!["h264","avc1","hevc","h265","hvc1"].includes(info.video_codec)){
+   message("Video-Codec "+info.video_codec.toUpperCase()+": Für diesen Codec reicht eine Audio-Umwandlung möglicherweise nicht.",true);
   }
   renderStatus();
  }).catch(()=>{format.textContent="Direct Play · Codec-Prüfung nicht verfügbar"});

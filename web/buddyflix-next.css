@@ -531,3 +531,14 @@ img{max-width:100%;display:block}
  .cinema-format{font-size:10px}.cinema-icon{min-height:37px;min-width:37px}
  #cinemaVolume{width:74px}.cinema-message{bottom:200px}
 }
+
+/* Explicit browser-autoplay fallback: only visible after a rejected play(). */
+.cinema-start-overlay{position:absolute;inset:0;z-index:4;display:grid;place-items:center;pointer-events:none;background:radial-gradient(ellipse at center,#0003,#000a 85%)}
+.cinema-start-overlay[hidden]{display:none}
+.cinema-start-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;pointer-events:auto;min-width:225px;min-height:205px;border-radius:22px;padding:26px;background:#111a21ed;border:1px solid #a2b7ad88;color:#f4f7f3;box-shadow:0 22px 66px #000a;cursor:pointer}
+.cinema-start-button:hover{background:#23312b;transform:scale(1.025)}
+.cinema-start-button strong{font-size:18px}
+.cinema-start-button small{font-size:11px;color:#c5cfc8;max-width:210px;text-align:center}
+.cinema-start-triangle{display:grid;place-items:center;width:65px;height:65px;border-radius:50%;background:#e7eee9;color:#17221c;font-size:24px}
+.cinema-mode-recommended{border-color:#d4dfd5!important;background:#31493b!important;box-shadow:0 0 0 3px #b9f0bd19}
+@media(max-width:700px){.cinema-start-button{min-width:185px;min-height:175px;padding:18px}.cinema-start-triangle{width:56px;height:56px}}
