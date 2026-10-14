@@ -1173,9 +1173,12 @@ func (s *Server) scan(w http.ResponseWriter, r *http.Request) {
 				s.st.Media[found].Missing = false
 				s.st.Media[found].Kind = kind
 				s.st.Media[found].SeriesTitle = seriesTitle
-				s.st.Media[found].Season = seasonNo
-				s.st.Media[found].Episode = episodeNo
-				s.st.Media[found].EpisodeTitle = episodeTitle
+                // Keep validated Jellyfin episode titles and numbering on subsequent scans.
+                if kind!="episode" || s.st.Media[found].MetadataProvider!="jellyfin-nfo" {
+                    s.st.Media[found].Season = seasonNo
+                    s.st.Media[found].Episode = episodeNo
+                    s.st.Media[found].EpisodeTitle = episodeTitle
+                }
 				if strings.TrimSpace(s.st.Media[found].Title) == "" {
 					s.st.Media[found].Title = title
 				}

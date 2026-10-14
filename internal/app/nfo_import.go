@@ -121,7 +121,7 @@ func readNFO(path string) (jellyfinNFO,error) {
     decoder.Strict=true
     if err:=decoder.Decode(&n);err!=nil {return jellyfinNFO{},err}
     tag:=strings.ToLower(n.XMLName.Local)
-    if tag!="movie" && tag!="episodedetails" { return jellyfinNFO{},fmt.Errorf("unsupported NFO type %q",tag) }
+    if tag!="movie" && tag!="episodedetails" && tag!="tvshow" { return jellyfinNFO{},fmt.Errorf("unsupported NFO type %q",tag) }
     if strings.TrimSpace(n.Title)=="" && len(nfoIDs(n))==0 {return jellyfinNFO{},fmt.Errorf("NFO contains neither title nor IDs")}
     return n,nil
 }

@@ -404,3 +404,13 @@ Gefundene JPEG-/PNG-/WebP-Bilder landen mit 12-MiB-Größenlimit und URL-Allowli
 In **Verwaltung → Medienpflege → Fehlende Poster** werden ausschließlich Filme ohne Poster aufgelistet. Die Zentrale zeigt deren Anzahl und verlinkt direkt auf die Aufgabenliste. Pro Film öffnet **Poster wählen** eine eigenständige Bildwerkstatt: passgenaue Vorschläge von konfigurierten TheTVDB-/TMDb-Anbietern per bereits gespeicherter Film-ID; HTTPS-Posteradresse; oder Datei-Upload (JPG, PNG, WebP, bis 12 MiB). Hochgeladene Dateien und heruntergeladene Anbieterbilder liegen dauerhaft in `BUDDYFLIX_DATA/nfo-art`. Beliebige manuelle HTTPS-Links werden **nicht** vom NAS heruntergeladen und benötigen weiterhin die Quelle.
 
 Bei einer Posterkorrektur bleiben IMDb-/TMDb-/TheTVDB-Zuordnung, Beschreibung, Filmtitel, Jahr, Profile und Wiedergabefortschritt unverändert. Die Posterwerkstatt verändert keine NFO-Dateien.
+
+## 📺 Jellyfin-Serienimport (ab dev.127)
+
+Unter **Verwaltung → Metadaten → Jellyfin-Serien übernehmen** führt die Aktion `Serien-NFOs prüfen` eine **lesende** Vorschau aus; `Serien und Folgen übernehmen` importiert nach Bestätigung nur eindeutige Serienzuordnungen. BuddyFlix findet `tvshow.nfo` im Serienordner oder dessen übergeordneten Ordnern bis zur Wurzel der Serienbibliothek. Ein `tvshow.nfo`, das mehreren verschiedenen Serien zugeordnet werden könnte, wird ausdrücklich abgelehnt.
+
+Der Import übernimmt Serientitel, Jahr, Beschreibung, Genres sowie IMDb-, TMDb- und TheTVDB-IDs in eine eigene persistente Serien-Metadatentabelle. Episoden-NFOs neben den Videodateien können Folgen-Namen, -Beschreibungen und IDs ergänzen. Unveränderte Medien-IDs und Pfade garantieren, dass persönliche Wiedergabefortschritte und Favoriten bestehen bleiben.
+
+Wenn vorhanden, werden `poster.jpg` und `fanart.jpg` aus Serienordnern sowie entsprechende Folgenbilder in `BUDDYFLIX_DATA/series-art` bzw. `nfo-art` dauerhaft kopiert. Über **Fehlende Serienbilder nachladen** können Serienposter/Hintergründe anschließend **anhand bereits vorhandener Serien-IDs** über den konfigurierten TMDb-/TheTVDB-Zugang nachgeladen werden. Der getrennte Serienlauf überschreibt weder Film-NFOs noch Filmzuordnungen.
+
+**Wichtig:** Nach NFO-Import und Bilderlauf zunächst prüfen, ob die Serienbilder auch nach einem BuddyFlix-Neustart geladen werden. Die Jellyfin-NFOs bis dahin nicht löschen. Bei der nachträglichen Bearbeitung von Dateinamen/Speicherorten braucht die Zuordnung möglicherweise eine erneute Bibliotheksprüfung.

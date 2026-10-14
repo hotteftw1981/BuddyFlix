@@ -197,6 +197,8 @@ function showPage(){
  return '<div class="show-page"><button class="back-link" data-page="serien">← Alle Serien</button>'+
    '<div class="show-head"><div class="show-visual">'+img(art(s,true),"fill-art",s.title)+'</div>'+
    '<div class="show-heading"><span class="eyebrow">DEINE SERIENWELT</span><h1>'+E(s.title)+'</h1><p>'+num(s.season_count)+' Staffeln · '+num(s.episode_count)+' Folgen · '+num(s.watched_count)+' gesehen</p>'+
+   (s.overview?'<p class="series-synopsis">'+E(s.overview)+'</p>':'')+
+   (s.genres?.length?'<p class="series-genre-tags">'+s.genres.slice(0,6).map(v=>'<span>'+E(v)+'</span>').join("")+'</p>':'')+
    '<div class="progress-rule"><i style="width:'+percentWatched(s)+'%"></i></div>'+
    (next?btn(inProgress(next)?"▶ Nächste Folge fortsetzen":"▶ Nächste Folge","play","primary",'data-id="'+next.id+'" '+(inProgress(next)?'data-mode="resume"':"")):"")+'</div></div>'+
    '<div class="episode-heading"><div><span class="eyebrow">EPISODEN</span><h2>Staffeln & Folgen</h2></div><div class="season-choices">'+seasons.map(x=>'<button class="chip '+(selected?.number===x.number?"active":"")+'" data-season="'+x.number+'">'+(x.number?"Staffel "+x.number:"Extras")+'</button>').join("")+'</div></div>'+
@@ -242,7 +244,7 @@ function admin(){
   '<div class="task-line"><b>'+num(reviews.length)+'</b><span>Treffer zur Prüfung</span></div>'+
   '<div class="task-line"><b>'+num(incomplete.length)+'</b><span>Medien ohne vollständige Metadaten</span></div>'+
   btn("Zur Medienpflege","gotoAdmin","",'data-tab="medien"')+
-  '<p class="attribution">Metadata provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>.</p></section></div>';body+=nfoPanel();}
+  '<p class="attribution">Metadata provided by <a href="https://thetvdb.com" target="_blank" rel="noopener noreferrer">TheTVDB</a>.</p></section></div>';body+=nfoPanel()+seriesNFOPanel();}
  if(t==="medien")body='<div class="workspace-panel"><div class="panel-heading"><div><h2>Medienpflege</h2><p>Metadaten zuordnen, Titel bearbeiten und verwaiste Einträge kontrollieren.</p></div>'+
    '<div class="row-buttons">'+btn("Fehlende bereinigen","cleanup","danger")+'</div></div>'+
    '<div class="data-toolbar"><label>Anzeige <select id="adminFilter">'+
@@ -322,6 +324,35 @@ function nfoPanel(){
   '<p class="nfo-hint">Unterstützt Filmname.nfo und movie.nfo (bei genau einem Film im Ordner). Vorhandene NFO-Dateien werden niemals verändert.</p></section>';
 }
 
+
+function seriesNFOPanel(){
+ const p=state.seriesNfoPreview;
+ const seriesStatus=state.seriesArtworkJob;
+ const counts=p?'<div class="nfo-numbers">'+[
+  [p.found,"Serien-NFOs gefunden"],[p.episodes_found,"Folgen-NFOs gefunden"],
+  [p.missing,"Serien ohne NFO"],[p.invalid,"Zur Prüfung"]
+ ].map(([count,label])=>'<div><b>'+num(count)+'</b><span>'+E(label)+'</span></div>').join("")+'</div>':"";
+ const preview=p?.examples?.length?'<div class="nfo-examples">'+p.examples.slice(0,10).map(x=>
+ '<div><strong>'+E(x.title||x.key)+'</strong><span>'+E(Object.entries(x.external_ids||{}).map(([k,v])=>k.toUpperCase()+": "+v).join(" · ")||"Keine externe ID")+'</span></div>').join("")+'</div>':"";
+ const issues=p?.problems?.length?'<details class="nfo-problems"><summary>Hinweise und Konflikte</summary>'+p.problems.map(x=>'<p>'+E(x)+'</p>').join("")+'</details>':"";
+ const task=seriesStatus?'<div class="job-box"><div><strong>'+E(seriesStatus.running?"Serienbilder werden geladen …":"Letzter Serienbilderlauf")+'</strong>'+
+ '<span>'+Math.min(100,Math.round(100*(seriesStatus.done||0)/Math.max(seriesStatus.total||0,1)))+'%</span></div>'+
+ '<div class="progress-rule"><i style="width:'+Math.min(100,Math.round(100*(seriesStatus.done||0)/Math.max(seriesStatus.total||0,1)))+'%"></i></div>'+
+ '<p>'+num(seriesStatus.done)+' / '+num(seriesStatus.total)+' Serien · '+num(seriesStatus.posters)+' Poster · '+num(seriesStatus.backdrops)+' Hintergründe gespeichert</p>'+
+ (seriesStatus.current_title?'<p>Gerade: '+E(seriesStatus.current_title)+'</p>':"")+
+ (seriesStatus.unresolved?'<p>'+num(seriesStatus.unresolved)+' ohne Poster</p>':"")+
+ (seriesStatus.errors?'<p class="error-text">'+num(seriesStatus.errors)+' Downloadfehler</p>':"")+
+ (seriesStatus.warning?'<p class="muted">'+E(seriesStatus.warning)+'</p>':"")+'</div>':"";
+ return '<section class="workspace-panel nfo-import-panel series-nfo-panel"><div class="eyebrow">SERIEN · STAFFELN · FOLGEN</div>'+
+ '<h2>Jellyfin-Serien übernehmen</h2><p>Für Serien nutzt BuddyFlix die <b>tvshow.nfo</b> aus dem Serienordner und die NFO-Dateien neben den Episoden. Filmmetadaten werden nicht verändert. Serienposter und Folgenbilder werden, soweit vorhanden, lokal gespeichert.</p>'+
+ '<div class="panel-buttons">'+btn("Serien-NFOs prüfen","seriesNfoPreview","primary")+
+ (p?.found?btn("Serien und Folgen übernehmen","seriesNfoApply"):"")+'</div>'+
+ counts+preview+issues+
+ (state.seriesLastResult?'<div class="nfo-confirmed"><strong>'+num(state.seriesLastResult.applied)+' Serien · '+num(state.seriesLastResult.episodes_applied)+' Folgen übernommen</strong><p>'+num(state.seriesLastResult.images_cached)+' lokale Bilder gesichert.</p></div>':"")+
+ '<div class="artwork-fix"><div><strong>Serienposter und Hintergründe vervollständigen</strong><p>Gezielt anhand der Serien-IDs nachladen – ohne Filmsuche und ohne Änderungen an deiner Film- oder Folgenzuordnung.</p></div>'+
+ btn(seriesStatus?.running?"Serienbilder laden …":"Fehlende Serienbilder nachladen","seriesArtRepair","primary")+
+ '</div><div id="seriesArtworkStatus">'+task+'</div></section>';
+}
 function artworkJobMarkup(){
  const j=state.artworkJob;
  if(!j)return '<p class="muted">Noch kein Bilderlauf gestartet.</p>';
@@ -344,11 +375,13 @@ function jobMarkup(){
  (j.error?'<p class="error-text">'+E(j.error)+'</p>':"")+'</div>';
 }
 async function loadAdmin(){
- const [settings,providers,all,job,artworkJob]=await Promise.all([
-  api("/api/settings"),api("/api/metadata/providers"),api("/api/media?include_missing=1"),api("/api/metadata/bulk"),api("/api/nfo/artwork/repair")
+ const [settings,providers,all,job,artworkJob,seriesArtworkJob]=await Promise.all([
+  api("/api/settings"),api("/api/metadata/providers"),api("/api/media?include_missing=1"),
+  api("/api/metadata/bulk"),api("/api/nfo/artwork/repair"),api("/api/series/artwork/repair")
  ]);
- Object.assign(state,{settings,providers,allMedia:all,job,artworkJob});
+ Object.assign(state,{settings,providers,allMedia:all,job,artworkJob,seriesArtworkJob});
  if(artworkJob.running)pollArtworkJob();
+ if(seriesArtworkJob.running)pollSeriesArtJob();
 }
 function modal(body,cls=""){
  closeModal();
@@ -537,6 +570,19 @@ async function handleAction(btn){
   render();if(state.artworkJob.running){toast("Bilderreparatur läuft im Hintergrund","success");pollArtworkJob()}
   else toast("Alle bereits lokal verfügbaren Bilder sind gesichert","success");
   break}
+ case "seriesNfoPreview":state.seriesNfoPreview=await api("/api/nfo/series");render();break;
+ case "seriesNfoApply":{const p=state.seriesNfoPreview;
+  if(!p?.found){toast("Zuerst die Serien-NFOs prüfen","error");break}
+  confirmBox("Serien aus Jellyfin übernehmen?",
+  p.found+" Serien und bis zu "+p.episodes_found+" Episoden werden anhand ihrer NFO-Dateien aktualisiert. Filmdateien, Filme und Wiedergabefortschritt bleiben unverändert.",
+  async()=>{const result=await api("/api/nfo/series",{method:"POST",body:data({confirm:true})});
+   state.seriesLastResult=result;state.seriesNfoPreview=await api("/api/nfo/series");
+   await refresh();toast(result.applied+" Serien und "+result.episodes_applied+" Folgen übernommen","success")},"Serien übernehmen");
+  break}
+ case "seriesArtRepair":{state.seriesArtworkJob=await api("/api/series/artwork/repair",{method:"POST"});
+  render();if(state.seriesArtworkJob.running){toast("Serienposter werden im Hintergrund geladen","success");pollSeriesArtJob()}
+  else toast("Alle verfügbaren Serienbilder bereits gesichert","success");
+  break}
  case "nfoPreview":state.nfoPreview=await api("/api/nfo/import");render();break;
  case "nfoApply":{const p=state.nfoPreview;
   if(!p||p.found<1){toast("Erst NFO-Dateien prüfen","error");break}
@@ -573,6 +619,18 @@ async function handleAction(btn){
  case "logout":await api("/api/logout",{method:"POST"});state.authed=false;state.page="login";render();break;
  }
  }catch(e){error(e)}
+}
+
+let seriesPollHandle=null;
+async function pollSeriesArtJob(){
+ if(seriesPollHandle)clearTimeout(seriesPollHandle);
+ try{
+  state.seriesArtworkJob=await api("/api/series/artwork/repair");
+  const host=q("#seriesArtworkStatus");
+  if(host&&state.page==="admin"&&state.adminTab==="metadata"){render()}
+  if(state.seriesArtworkJob.running){seriesPollHandle=setTimeout(pollSeriesArtJob,2500)}
+  else if(state.page==="admin"){await refresh();toast("Serienbilder aktualisiert","success")}
+ }catch(e){seriesPollHandle=setTimeout(pollSeriesArtJob,5000)}
 }
 let artworkPollHandle=null;
 async function pollArtworkJob(){

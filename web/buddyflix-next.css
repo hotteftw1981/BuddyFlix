@@ -476,3 +476,14 @@ img{max-width:100%;display:block}
 .poster-quick-form p{font-size:11px;margin:0;color:#aab6b0}
 .poster-quick-form input[type=file]{width:100%;max-width:100%;overflow:hidden}
 @media(max-width:670px){.poster-picker-layout{grid-template-columns:1fr}.poster-picker-preview{max-width:145px}.poster-picker-dialog{padding:18px}}
+
+/* Independent series NFO + artwork treatment (BuddyFlix Next) */
+.series-nfo-panel{margin-top:18px;background:linear-gradient(130deg,#20252e,#1b2429 75%);border-color:#50616c}
+.series-nfo-panel h2{font-size:26px;margin:10px 0}
+.series-nfo-panel > p{max-width:840px;font-size:12px;color:#afbdc5;line-height:1.8}
+.series-nfo-panel .panel-buttons{margin-top:12px}
+.series-nfo-panel .nfo-examples{margin:18px 0}
+.series-nfo-panel .artwork-fix{margin-top:25px}
+.show-heading .series-synopsis{font-size:13px;line-height:1.85;color:#bdc9c8;max-width:680px;margin-top:18px}
+.series-genre-tags{display:flex;gap:6px;flex-wrap:wrap;margin:15px 0}
+.series-genre-tags span{font-size:11px;border:1px solid #4b5a5d;border-radius:30px;padding:4px 9px;color:#d9e3df}
