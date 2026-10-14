@@ -390,3 +390,11 @@ BuddyFlix ist ein öffentliches Hobby-/Entwicklungsprojekt rund um die Frage:
 > **„Wie weit kommt man mit einem alten ARM-NAS, wenn man einfach nicht akzeptiert, dass es angeblich zu alt ist?“**
 
 Ziemlich weit, offenbar. 😄🍿
+
+## 🎨 Fehlende Poster per exakter ID reparieren (ab dev.125)
+
+In **Verwaltung → Metadaten** steht neben dem NFO-Import die Aktion **„Fehlende Bilder nachladen“** zur Verfügung. Dieser Hintergrundlauf nimmt ausschließlich bereits gespeicherte IMDb-, TMDb- und TheTVDB-IDs und fragt damit über die konfigurierten Metadatenanbieter gezielt Artwork ab. Es gibt **keine erneute unsichere Titelsuche** und keine Änderungen an Filmtiteln, Beschreibungen oder NFO-Zuordnungen.
+
+Gefundene JPEG-/PNG-/WebP-Bilder landen mit 12-MiB-Größenlimit und URL-Allowlist persistent unter `BUDDYFLIX_DATA/nfo-art`. Im Browser werden sie über `/api/nfo/art` ausgeliefert. Die Ansicht zeigt Fortschritt, Poster-/Backdrop-Erfolge und offene Treffer. TheTVDB kann bei fehlender eigener Film-ID über eine exakte IMDb-ID die Film-ID ermitteln; bei konfiguriertem TMDb-Zugang funktioniert auch der TMDb-ID-/IMDb-ID-Pfad. Bereits gespeicherte Bilder bleiben bestehen. Ohne Netzwerkverbindung oder verfügbare Anbieter bleiben fehlende Bilder offen und können später erneut nachgeladen werden.
+
+**Die vorhandenen NFO-Dateien nicht vor der erfolgreichen Bildreparatur löschen.**

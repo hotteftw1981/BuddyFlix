@@ -97,6 +97,7 @@ func nfoIDs(n jellyfinNFO) map[string]string {
         kind=strings.ToLower(strings.TrimSpace(kind))
         kind=strings.TrimSuffix(kind,"id")
         kind=strings.TrimSpace(kind)
+        switch kind {case "thetvdb":kind="tvdb";case "themoviedb":kind="tmdb"}
         val=strings.TrimSpace(val)
         if kind=="imdb" && imdbPattern.MatchString(val) { ids["imdb"]=val; return }
         if (kind=="tmdb" || kind=="tvdb") && numericID.MatchString(val) { ids[kind]=val; return }

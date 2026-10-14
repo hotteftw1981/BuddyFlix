@@ -301,6 +301,10 @@ function nfoPanel(){
   'Nur bei gültiger NFO werden die bisherigen BuddyFlix-Metadaten und IDs ersetzt. Filme, Profile, Merkliste und Wiedergabefortschritt bleiben erhalten.</p></div>'+
   '<div class="panel-buttons">'+btn("NFO-Dateien prüfen","nfoPreview","primary")+
   (p&&p.found>0?btn("Alle "+num(p.found)+" NFOs übernehmen","nfoApply","",'data-count="'+p.found+'"'):"")+'</div></div>'+
+  '<div class="artwork-fix"><div><strong>Leere Poster? Bilder anhand der Film-IDs holen</strong>'+
+  '<p>BuddyFlix sucht über die bereits importierten IMDb-, TMDb- oder TheTVDB-IDs nach den passenden Bildern. Keine neue Titelsuche und keine Änderung an deinen NFO-Zuordnungen. Gefundene Bilder werden im BuddyFlix-Datenordner gespeichert.</p></div>'+
+  btn(state.artworkJob?.running?"Bildreparatur läuft …":"Fehlende Bilder nachladen","artworkRepair","primary")+
+  '</div><div id="artworkStatus">'+artworkJobMarkup()+'</div>'+
   (state.nfoLastResult?'<div class="nfo-confirmed"><strong>Letzter Import: '+num(state.nfoLastResult.applied)+' Medien übernommen · '+num(state.nfoLastResult.images_cached)+' lokale Bilder dauerhaft gesichert</strong>'+
  (state.nfoLastResult.failed?'<p>'+num(state.nfoLastResult.failed)+' Titel konnten wegen eines Bild- oder Speicherfehlers nicht importiert werden. Bitte prüfen.</p>':'<p>Metadaten sind in BuddyFlix gespeichert. Falls noch alte dev.123-Bilder eingebunden sind: NFO-Import erneut ausführen, bevor du NFO-Dateien entfernst.</p>')+
  '</div>':"")+
@@ -309,6 +313,18 @@ function nfoPanel(){
   '<p class="nfo-hint">Unterstützt Filmname.nfo und movie.nfo (bei genau einem Film im Ordner). Vorhandene NFO-Dateien werden niemals verändert.</p></section>';
 }
 
+function artworkJobMarkup(){
+ const j=state.artworkJob;
+ if(!j)return '<p class="muted">Noch kein Bilderlauf gestartet.</p>';
+ const progress=Math.min(100,Math.round(100*(j.done||0)/Math.max(1,j.total||0)));
+ return '<div class="job-box"><div><strong>'+E(j.running?'Bilder werden geladen …':'Letzter Bilderlauf')+
+ '</strong><span>'+progress+'%</span></div><div class="progress-rule"><i style="width:'+progress+'%"></i></div>'+
+ '<p>'+num(j.done)+' / '+num(j.total)+' geprüft · '+num(j.posters)+' Poster · '+num(j.backdrops)+' Hintergründe gesichert</p>'+
+ (j.current_title?'<p>Gerade: '+E(j.current_title)+'</p>':'')+
+ (j.unresolved?'<p>'+num(j.unresolved)+' Poster bisher ohne Treffer</p>':'')+
+ (j.errors?'<p class="error-text">'+num(j.errors)+' Bildabrufe fehlgeschlagen</p>':'')+
+ (j.warning?'<p class="muted">'+E(j.warning)+'</p>':'')+'</div>';
+}
 function jobMarkup(){
  const j=state.job;
  if(!j)return '<p class="muted">Noch kein Metadatenlauf gestartet.</p>';
@@ -319,10 +335,11 @@ function jobMarkup(){
  (j.error?'<p class="error-text">'+E(j.error)+'</p>':"")+'</div>';
 }
 async function loadAdmin(){
- const [settings,providers,all,job]=await Promise.all([
-  api("/api/settings"),api("/api/metadata/providers"),api("/api/media?include_missing=1"),api("/api/metadata/bulk")
+ const [settings,providers,all,job,artworkJob]=await Promise.all([
+  api("/api/settings"),api("/api/metadata/providers"),api("/api/media?include_missing=1"),api("/api/metadata/bulk"),api("/api/nfo/artwork/repair")
  ]);
- Object.assign(state,{settings,providers,allMedia:all,job});
+ Object.assign(state,{settings,providers,allMedia:all,job,artworkJob});
+ if(artworkJob.running)pollArtworkJob();
 }
 function modal(body,cls=""){
  closeModal();
@@ -470,6 +487,10 @@ async function handleAction(btn){
  case "favorite":{const m=mById(id);await doMediaAction(id,m?.favorite?"unfavorite":"favorite");break}
  case "watch":{const m=mById(id);await doMediaAction(id,watched(m)?"mark_unwatched":"mark_watched");break}
  case "scan":{const x=await api("/api/scan",{method:"POST"});toast(num(x.files_seen)+" Dateien gefunden","success");await refresh();break}
+ case "artworkRepair":{state.artworkJob=await api("/api/nfo/artwork/repair",{method:"POST"});
+  render();if(state.artworkJob.running){toast("Bilderreparatur läuft im Hintergrund","success");pollArtworkJob()}
+  else toast("Alle bereits lokal verfügbaren Bilder sind gesichert","success");
+  break}
  case "nfoPreview":state.nfoPreview=await api("/api/nfo/import");render();break;
  case "nfoApply":{const p=state.nfoPreview;
   if(!p||p.found<1){toast("Erst NFO-Dateien prüfen","error");break}
@@ -506,6 +527,16 @@ async function handleAction(btn){
  case "logout":await api("/api/logout",{method:"POST"});state.authed=false;state.page="login";render();break;
  }
  }catch(e){error(e)}
+}
+let artworkPollHandle=null;
+async function pollArtworkJob(){
+ if(artworkPollHandle)clearTimeout(artworkPollHandle);
+ try{
+   state.artworkJob=await api("/api/nfo/artwork/repair");
+   const status=q("#artworkStatus");if(status)status.innerHTML=artworkJobMarkup();
+   if(state.artworkJob.running){artworkPollHandle=setTimeout(pollArtworkJob,2000)}
+   else if(state.page==="admin"){await refresh();toast(state.artworkJob.posters+" Poster gespeichert","success")}
+ }catch(e){artworkPollHandle=setTimeout(pollArtworkJob,5000)}
 }
 let pollHandle=null;
 async function pollJob(){

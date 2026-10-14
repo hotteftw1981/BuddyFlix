@@ -191,6 +191,8 @@ type Server struct {
 	scanRunning bool
 	metadataMu  sync.Mutex
 	metadataJob MetadataJob
+	artworkMu   sync.Mutex
+	artworkJob  ArtworkRepairJob
 }
 
 func New(cfg Config) (*Server, error) {
@@ -315,6 +317,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/metadata/bulk", s.auth(s.metadataBulk))
 	s.mux.HandleFunc("/api/nfo/import", s.auth(s.nfoImport))
 	s.mux.HandleFunc("/api/nfo/art", s.auth(s.nfoArt))
+	s.mux.HandleFunc("/api/nfo/artwork/repair", s.auth(s.artworkRepair))
 	s.mux.HandleFunc("/api/metadata/providers", s.auth(s.metadataProviders))
 	s.mux.HandleFunc("/api/metadata/", s.auth(s.metadata))
 	s.mux.HandleFunc("/stream/", s.auth(s.stream))

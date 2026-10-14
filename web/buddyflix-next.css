@@ -449,3 +449,11 @@ img{max-width:100%;display:block}
 .nfo-confirmed{margin-top:20px;border:1px solid #566e5b;background:#213329;padding:15px 17px;border-radius:11px}
 .nfo-confirmed strong{color:#e0f3e4;font-size:12px}
 .nfo-confirmed p{color:#b5c7b8;margin:7px 0 0;font-size:11px}
+
+/* Provider-ID artwork repair in the Jellyfin NFO workspace. */
+.artwork-fix{margin:18px 0 12px;padding:16px;border:1px solid #435651;border-radius:12px;background:linear-gradient(105deg,#26312d,#1e2427);display:flex;gap:20px;justify-content:space-between;align-items:center}
+.artwork-fix strong{font-size:14px;color:#e7efe8}
+.artwork-fix p{font-size:11px;line-height:1.6;max-width:650px;color:#aab8b1;margin:7px 0 0}
+.artwork-fix button{flex-shrink:0}
+#artworkStatus .job-box{margin-top:0}
+@media(max-width:750px){.artwork-fix{flex-direction:column;align-items:flex-start;gap:12px}}
