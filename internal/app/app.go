@@ -130,6 +130,10 @@ type SeriesView struct {
 	ContinueCount  int            `json:"continue_count"`
 	Poster         string         `json:"poster,omitempty"`
 	Backdrop       string         `json:"backdrop,omitempty"`
+	Overview       string         `json:"overview,omitempty"`
+	Year           int            `json:"year,omitempty"`
+	ExternalIDs    map[string]string `json:"external_ids,omitempty"`
+	Genres         []string       `json:"genres,omitempty"`
 	LastActivity   string         `json:"last_activity,omitempty"`
 	NextEpisode    *Media         `json:"next_episode,omitempty"`
 	Seasons        []SeriesSeason `json:"seasons"`
@@ -173,6 +177,7 @@ type Store struct {
 	NextProfileID   int64                        `json:"next_profile_id"`
 	Libraries       []Library                    `json:"libraries"`
 	Media           []Media                      `json:"media"`
+	SeriesMetadata  map[string]SeriesMetadata    `json:"series_metadata,omitempty"`
 	Profiles        []Profile                    `json:"profiles,omitempty"`
 	Progress        map[int64]Progress           `json:"progress"`
 	ProfileProgress  map[int64]map[int64]Progress `json:"profile_progress,omitempty"`
@@ -193,6 +198,8 @@ type Server struct {
 	metadataJob MetadataJob
 	artworkMu   sync.Mutex
 	artworkJob  ArtworkRepairJob
+	seriesArtMu sync.Mutex
+	seriesArtJob ArtworkRepairJob
 }
 
 func New(cfg Config) (*Server, error) {
@@ -211,6 +218,7 @@ func (s *Server) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.st = Store{NextLibraryID: 1, NextMediaID: 1, NextProfileID: 1, Progress: map[int64]Progress{}, ProfileProgress: map[int64]map[int64]Progress{}, ProfileFavorites: map[int64]map[int64]bool{}}
+	s.st.SeriesMetadata = map[string]SeriesMetadata{}
 	s.st.Settings.ServerName = "BuddyFlix"
 	s.st.Settings.AdminUser = s.cfg.AdminUser
 	h := sha256.Sum256([]byte(s.cfg.AdminPassword))
@@ -232,6 +240,7 @@ func (s *Server) load() error {
 	if err = json.Unmarshal(b, &s.st); err != nil {
 		return err
 	}
+	if s.st.SeriesMetadata == nil { s.st.SeriesMetadata = map[string]SeriesMetadata{} }
 	if s.st.Progress == nil {
 		s.st.Progress = map[int64]Progress{}
 	}
@@ -309,6 +318,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/scan", s.auth(s.scan))
 	s.mux.HandleFunc("/api/media", s.auth(s.media))
 	s.mux.HandleFunc("/api/series", s.auth(s.series))
+	s.mux.HandleFunc("/api/nfo/series", s.auth(s.seriesNFOImport))
+	s.mux.HandleFunc("/api/series/art", s.auth(s.seriesArt))
+	s.mux.HandleFunc("/api/series/artwork/repair", s.auth(s.seriesArtworkRepair))
 	s.mux.HandleFunc("/api/media/action", s.auth(s.mediaAction))
 	s.mux.HandleFunc("/api/media/cleanup", s.auth(s.mediaCleanup))
 	s.mux.HandleFunc("/api/progress", s.auth(s.progress))
@@ -1390,6 +1402,15 @@ func (s *Server) series(w http.ResponseWriter, r *http.Request) {
 		b := groups[key]
 		if b == nil {
 			b = &builder{view: SeriesView{Key:key, Title:title}, seasons:map[int][]Media{}}
+            if meta,ok:=s.st.SeriesMetadata[key];ok {
+                if meta.Title!="" {b.view.Title=meta.Title}
+                b.view.Poster=meta.Poster
+                b.view.Backdrop=meta.Backdrop
+                b.view.Overview=meta.Overview
+                b.view.Year=meta.Year
+                b.view.ExternalIDs=meta.ExternalIDs
+                b.view.Genres=meta.Genres
+            }
 			groups[key] = b
 			order = append(order, key)
 		}
