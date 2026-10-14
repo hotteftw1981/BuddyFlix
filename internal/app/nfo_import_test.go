@@ -110,7 +110,7 @@ func TestJellyfinNFOEpisodeWithMatchingFilename(t *testing.T) {
     video:=filepath.Join(dir,"Pilot S01E01.mkv")
     nfo:=filepath.Join(dir,"Pilot S01E01.nfo")
     if err:=os.WriteFile(video,[]byte("video"),0644);err!=nil{t.Fatal(err)}
-    if err:=os.WriteFile(nfo,[]byte("<episodedetails><title>Pilot</title><showtitle>Show</showtitle><season>1</season><episode>1</episode><uniqueid type="tvdb">123</uniqueid></episodedetails>"),0644);err!=nil{t.Fatal(err)}
+    if err:=os.WriteFile(nfo,[]byte(`<episodedetails><title>Pilot</title><showtitle>Show</showtitle><season>1</season><episode>1</episode><uniqueid type="tvdb">123</uniqueid></episodedetails>`),0644);err!=nil{t.Fatal(err)}
     p,h:=buildNFOPreview([]Media{{ID:1,Path:video,Kind:"episode",SeriesTitle:"Show"}})
     if p.Found!=1||h[0].IDs["tvdb"]!="123" {t.Fatalf("episode NFO failed: %+v",p)}
 }
