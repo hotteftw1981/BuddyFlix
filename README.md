@@ -414,3 +414,15 @@ Der Import übernimmt Serientitel, Jahr, Beschreibung, Genres sowie IMDb-, TMDb-
 Wenn vorhanden, werden `poster.jpg` und `fanart.jpg` aus Serienordnern sowie entsprechende Folgenbilder in `BUDDYFLIX_DATA/series-art` bzw. `nfo-art` dauerhaft kopiert. Über **Fehlende Serienbilder nachladen** können Serienposter/Hintergründe anschließend **anhand bereits vorhandener Serien-IDs** über den konfigurierten TMDb-/TheTVDB-Zugang nachgeladen werden. Der getrennte Serienlauf überschreibt weder Film-NFOs noch Filmzuordnungen.
 
 **Wichtig:** Nach NFO-Import und Bilderlauf zunächst prüfen, ob die Serienbilder auch nach einem BuddyFlix-Neustart geladen werden. Die Jellyfin-NFOs bis dahin nicht löschen. Bei der nachträglichen Bearbeitung von Dateinamen/Speicherorten braucht die Zuordnung möglicherweise eine erneute Bibliotheksprüfung.
+
+## 🎞️ Folgenbilder automatisch nachladen (ab dev.129)
+
+Unter **Verwaltung → Metadaten → Jellyfin-Serien übernehmen** bietet BuddyFlix nun den separaten Hintergrundlauf **„Fehlende Folgenbilder nachladen“**. Er arbeitet **ohne Filmtitel-Suche**: Zu jedem bisher fehlenden Episodenbild wird die bereits importierte Serien-ID für TheTVDB und/oder TMDb zusammen mit **Staffelnummer und Folgennummer** verwendet.
+
+- TheTVDB: Episoden des jeweiligen Staffeljahres über die standardmäßige Folgenreihenfolge des Serien-Endpoints abrufen; Bild-URL nach genau passender Folge bestimmen, auch bei mehrseitigen Ergebnissen.
+- TMDb: `/tv/{series_id}/season/{season_number}` liefert die Episoden inklusive `still_path`. Die Staffel wird gesammelt abgefragt, statt pro Folge eine separate Netzwerkanfrage zu starten.
+- Der Bilddownload erfolgt nur von freigegebenen Medienservern. Gespeichert werden JPEG-/PNG-/WebP-Dateien unter `BUDDYFLIX_DATA/nfo-art` mit der Medien-ID der **jeweiligen Episode**. Die Weboberfläche zeigt sie über den bestehenden authentifizierten Endpunkt `/api/nfo/art` an.
+- Nur fehlende oder beschädigte lokale Episodenbilder werden bearbeitet; Film- und Serienposter sowie manuell zugeordnete Bildadressen bleiben unverändert. Metadaten-IDs, Profile und Fortschritte bleiben erhalten.
+- Bei bereits vorhandenen Filmen/Serien ist kein erneuter NFO-Import erforderlich. Nach Start des Hintergrundlaufs zeigt die Oberfläche Fortschritt, gesicherte Szenenbilder, verbleibende Fälle und Downloadfehler.
+
+Episodebilder benötigen eine vorhandene Serien-ID und die passende **Standard-Staffelreihenfolge**; bei abweichender DVD-/Streaming-Sortierung können bestimmte Vorschaubilder fehlen oder unpassend sein. Die originalen NFO-Dateien bitte bis zur Kontrolle weiterhin aufheben.

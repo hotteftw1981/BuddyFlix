@@ -487,3 +487,10 @@ img{max-width:100%;display:block}
 .show-heading .series-synopsis{font-size:13px;line-height:1.85;color:#bdc9c8;max-width:680px;margin-top:18px}
 .series-genre-tags{display:flex;gap:6px;flex-wrap:wrap;margin:15px 0}
 .series-genre-tags span{font-size:11px;border:1px solid #4b5a5d;border-radius:30px;padding:4px 9px;color:#d9e3df}
+
+/* Episode scene stills: independent job within series administration. */
+.episode-artwork-fix{margin-top:20px;border-radius:13px;padding:20px;background:linear-gradient(110deg,#1e2a2a,#172023);border:1px solid #456659}
+.episode-artwork-fix h3{font-size:21px;letter-spacing:-.03em;margin:10px 0}
+.episode-artwork-fix>p{max-width:850px;font-size:12px;line-height:1.75;color:#b9c8c0}
+.episode-artwork-fix .panel-buttons{margin:16px 0}
+.episode-artwork-fix .job-box{margin-top:10px}

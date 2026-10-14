@@ -200,6 +200,8 @@ type Server struct {
 	artworkJob  ArtworkRepairJob
 	seriesArtMu sync.Mutex
 	seriesArtJob ArtworkRepairJob
+	episodeArtMu sync.Mutex
+	episodeArtJob ArtworkRepairJob
 }
 
 func New(cfg Config) (*Server, error) {
@@ -321,6 +323,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/nfo/series", s.auth(s.seriesNFOImport))
 	s.mux.HandleFunc("/api/series/art", s.auth(s.seriesArt))
 	s.mux.HandleFunc("/api/series/artwork/repair", s.auth(s.seriesArtworkRepair))
+	s.mux.HandleFunc("/api/episodes/artwork/repair", s.auth(s.episodeArtworkRepair))
 	s.mux.HandleFunc("/api/media/action", s.auth(s.mediaAction))
 	s.mux.HandleFunc("/api/media/cleanup", s.auth(s.mediaCleanup))
 	s.mux.HandleFunc("/api/progress", s.auth(s.progress))

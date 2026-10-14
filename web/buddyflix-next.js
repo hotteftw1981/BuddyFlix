@@ -351,7 +351,25 @@ function seriesNFOPanel(){
  (state.seriesLastResult?'<div class="nfo-confirmed"><strong>'+num(state.seriesLastResult.applied)+' Serien · '+num(state.seriesLastResult.episodes_applied)+' Folgen übernommen</strong><p>'+num(state.seriesLastResult.images_cached)+' lokale Bilder gesichert.</p></div>':"")+
  '<div class="artwork-fix"><div><strong>Serienposter und Hintergründe vervollständigen</strong><p>Gezielt anhand der Serien-IDs nachladen – ohne Filmsuche und ohne Änderungen an deiner Film- oder Folgenzuordnung.</p></div>'+
  btn(seriesStatus?.running?"Serienbilder laden …":"Fehlende Serienbilder nachladen","seriesArtRepair","primary")+
- '</div><div id="seriesArtworkStatus">'+task+'</div></section>';
+ '</div><div id="seriesArtworkStatus">'+task+'</div>'+
+ '<div class="episode-artwork-fix"><div class="eyebrow">NEU · EPISODENBILDER</div><h3>Auch die Folgen sollen Bilder haben.</h3>'+
+ '<p>Einzelne Szenenbilder für deine Folgen nachladen – über die vorhandene Serien-ID plus exakte Staffel- und Folgennummer. Alle Bilder werden dauerhaft gespeichert. Die Zuordnungen und Wiedergabefortschritte bleiben unangetastet.</p>'+
+ '<div class="panel-buttons">'+btn(state.episodeArtworkJob?.running?"Folgenbilder werden geladen …":"Fehlende Folgenbilder nachladen","episodeArtRepair","primary")+'</div>'+
+ '<div id="episodeArtworkStatus">'+episodeArtworkJobMarkup()+'</div></div></section>';
+}
+function episodeArtworkJobMarkup(){
+ const job=state.episodeArtworkJob;
+ if(!job)return '<p class="muted">Noch keine Episodenbilder nachgeladen.</p>';
+ const pctDone=job.total?Math.round(100*(job.done||0)/job.total):100;
+ return '<div class="job-box"><div><strong>'+E(job.running?"Folgenbilder werden geladen …":"Letzter Episodenbilder-Lauf")+
+ '</strong><span>'+pctDone+'%</span></div>'+
+ '<div class="progress-rule"><i style="width:'+pctDone+'%"></i></div>'+
+ '<p>'+num(job.done)+' / '+num(job.total)+' Folgen geprüft · '+num(job.backdrops)+' Szenenbilder gespeichert</p>'+
+ (job.current_title?'<p>'+E(job.current_title)+'</p>':"")+
+ (job.unresolved?'<p>'+num(job.unresolved)+' Folgen ohne gefundenes Bild</p>':"")+
+ (job.skipped?'<p>'+num(job.skipped)+' übersprungen (bereits vorhanden oder ohne ID)</p>':"")+
+ (job.errors?'<p class="error-text">'+num(job.errors)+' Downloads fehlgeschlagen</p>':"")+
+ (job.warning?'<p class="muted">'+E(job.warning)+'</p>':"")+'</div>';
 }
 function artworkJobMarkup(){
  const j=state.artworkJob;
@@ -375,13 +393,14 @@ function jobMarkup(){
  (j.error?'<p class="error-text">'+E(j.error)+'</p>':"")+'</div>';
 }
 async function loadAdmin(){
- const [settings,providers,all,job,artworkJob,seriesArtworkJob]=await Promise.all([
+ const [settings,providers,all,job,artworkJob,seriesArtworkJob,episodeArtworkJob]=await Promise.all([
   api("/api/settings"),api("/api/metadata/providers"),api("/api/media?include_missing=1"),
-  api("/api/metadata/bulk"),api("/api/nfo/artwork/repair"),api("/api/series/artwork/repair")
+  api("/api/metadata/bulk"),api("/api/nfo/artwork/repair"),api("/api/series/artwork/repair"),api("/api/episodes/artwork/repair")
  ]);
- Object.assign(state,{settings,providers,allMedia:all,job,artworkJob,seriesArtworkJob});
+ Object.assign(state,{settings,providers,allMedia:all,job,artworkJob,seriesArtworkJob,episodeArtworkJob});
  if(artworkJob.running)pollArtworkJob();
  if(seriesArtworkJob.running)pollSeriesArtJob();
+ if(episodeArtworkJob.running)pollEpisodeArtJob();
 }
 function modal(body,cls=""){
  closeModal();
@@ -583,6 +602,10 @@ async function handleAction(btn){
   render();if(state.seriesArtworkJob.running){toast("Serienposter werden im Hintergrund geladen","success");pollSeriesArtJob()}
   else toast("Alle verfügbaren Serienbilder bereits gesichert","success");
   break}
+ case "episodeArtRepair":{state.episodeArtworkJob=await api("/api/episodes/artwork/repair",{method:"POST"});
+  render();if(state.episodeArtworkJob.running){toast("Folgenbilder werden im Hintergrund nachgeladen","success");pollEpisodeArtJob()}
+  else toast("Keine offenen Folgenbilder mit bekannten Serien-IDs","success");
+  break}
  case "nfoPreview":state.nfoPreview=await api("/api/nfo/import");render();break;
  case "nfoApply":{const p=state.nfoPreview;
   if(!p||p.found<1){toast("Erst NFO-Dateien prüfen","error");break}
@@ -621,6 +644,20 @@ async function handleAction(btn){
  }catch(e){error(e)}
 }
 
+let episodePollHandle=null;
+async function pollEpisodeArtJob(){
+ if(episodePollHandle)clearTimeout(episodePollHandle);
+ try{
+  state.episodeArtworkJob=await api("/api/episodes/artwork/repair");
+  const host=q("#episodeArtworkStatus");
+  if(host)host.innerHTML=episodeArtworkJobMarkup();
+  if(state.episodeArtworkJob.running)episodePollHandle=setTimeout(pollEpisodeArtJob,2500);
+  else if(state.page==="admin"){
+    await refresh();
+    toast(num(state.episodeArtworkJob.backdrops)+" Folgenbilder dauerhaft gespeichert","success");
+  }
+ }catch(e){episodePollHandle=setTimeout(pollEpisodeArtJob,6000)}
+}
 let seriesPollHandle=null;
 async function pollSeriesArtJob(){
  if(seriesPollHandle)clearTimeout(seriesPollHandle);
